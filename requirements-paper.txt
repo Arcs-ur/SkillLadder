@@ -1,0 +1,6 @@
+# Direct dependency versions in the verified paper artifact environment.
+numpy==2.0.2
+openai==2.44.0
+pydantic==2.13.4
+scikit-learn==1.6.1
+sentence-transformers==5.1.2

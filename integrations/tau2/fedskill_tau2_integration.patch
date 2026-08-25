@@ -1,0 +1,779 @@
+diff --git a/src/tau2/agent/llm_agent.py b/src/tau2/agent/llm_agent.py
+index 652974f..a17f398 100644
+--- a/src/tau2/agent/llm_agent.py
++++ b/src/tau2/agent/llm_agent.py
+@@ -1,4 +1,9 @@
+-from typing import Generic, List, Optional, TypeVar
++import json
++import os
++import re
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any, Generic, List, Optional, TypeVar
+ 
+ from loguru import logger
+ from pydantic import BaseModel
+@@ -19,7 +24,7 @@ from tau2.data_model.message import (
+ )
+ from tau2.data_model.tasks import Action, Task
+ from tau2.environment.tool import Tool, as_tool
+-from tau2.utils.llm_utils import generate
++from tau2.utils.llm_utils import extract_json_from_llm_response, generate
+ 
+ AGENT_INSTRUCTION = """
+ You are a customer service agent that helps the user according to the <policy> provided below.
+@@ -40,6 +45,86 @@ SYSTEM_PROMPT = """
+ </policy>
+ """.strip()
+ 
++FEDSKILL_SYSTEM_PROMPT = """
++<instructions>
++{agent_instruction}
++</instructions>
++<policy>
++{domain_policy}
++</policy>
++<fedskill_skills>
++{skills_text}
++</fedskill_skills>
++""".strip()
++
++FEDSKILL_DYNAMIC_SYSTEM_PROMPT = """
++<instructions>
++{agent_instruction}
++</instructions>
++<policy>
++{domain_policy}
++</policy>
++<fedskill_runtime>
++You have access to an internal hidden FedSkill librarian. The librarian may add
++relevant skills in temporary system messages under <fedskill_retrieved_skills>.
++Use those skills only when they are relevant, do not mention this internal
++mechanism to the user, and always treat the domain policy as authoritative.
++</fedskill_runtime>
++""".strip()
++
++FEDSKILL_RETRIEVED_SKILLS_PROMPT = """
++<fedskill_retrieved_skills>
++{skills_text}
++</fedskill_retrieved_skills>
++""".strip()
++
++FEDSKILL_QUERY_SYSTEM_PROMPT = """
++You are the hidden FedSkill librarian controller for a customer-service agent.
++Decide whether the next agent response needs a skill-library lookup.
++
++Return valid JSON only, with this schema:
++{
++    "need_skills": true or false,
++    "query": "short search query if need_skills is true, otherwise empty string",
++    "reason": "brief reason"
++}
++
++Set need_skills=true for complex or high-risk situations such as policy
++eligibility, cancellation, refund, compensation, upgrade, reservation changes,
++irreversible write actions, user claims that need verification, multi-reservation
++retrieval, cost calculation, or uncertainty about the next step.
++Set need_skills=false for simple greetings, acknowledgements, or purely clerical
++follow-up questions.
++""".strip()
++
++FEDSKILL_JUDGE_SYSTEM_PROMPT = """
++You are the hidden FedSkill librarian quality judge.
++You receive the main agent's skill query and retrieved candidate skills.
++Decide whether the candidates satisfy the query, then select only the useful
++skills to return to the main agent.
++
++Return valid JSON only, with this schema:
++{
++    "sufficient": true or false,
++    "selected_skill_ids": ["skill id", "..."],
++    "selected_skill_names": ["skill name", "..."],
++    "refined_query": "better query if sufficient is false, otherwise empty string",
++    "reason": "brief reason"
++}
++
++Select at most the few skills that are directly useful. Reject generic,
++duplicated, or off-topic candidates. If the candidates do not cover the need,
++set sufficient=false and provide a refined query.
++""".strip()
++
++FEDSKILL_AGENT_INSTRUCTION = AGENT_INSTRUCTION + """
++
++You may also receive reusable FedSkill skills. Treat them as optional procedural hints:
++- Use a skill only when it is clearly relevant to the user's request.
++- The domain policy is always authoritative; never follow a skill step that conflicts with the policy.
++- Prefer concise tool use and verify policy conditions before irreversible write actions.
++"""
++
+ 
+ class LLMAgentState(BaseModel):
+     """The state of the agent."""
+@@ -135,6 +220,629 @@ class LLMAgent(
+         return assistant_message
+ 
+ 
++class FedSkillLLMAgent(LLMAgent):
++    """LLM agent with FedSkill skill retrieval support."""
++
++    # Class-level cache so the embedding model and skill matrix are loaded once
++    # per Python process, not once per task.
++    _fedskill_embedding_model = None
++    _fedskill_embedding_model_name: Optional[str] = None
++    _fedskill_embedding_cache: dict = {}
++
++    def __init__(
++        self,
++        tools: List[Tool],
++        domain_policy: str,
++        llm: str,
++        llm_args: Optional[dict] = None,
++        task: Optional[Task] = None,
++    ):
++        super().__init__(
++            tools=tools,
++            domain_policy=domain_policy,
++            llm=llm,
++            llm_args=llm_args,
++        )
++        self.task = task
++        self._skills = self._load_skills()
++        self._turn_index = 0
++        self._consultation_index = 0
++        self._skill_log_path = self._resolve_skill_log_path()
++
++    @property
++    def system_prompt(self) -> str:
++        if self._injection_mode() == "static":
++            return FEDSKILL_SYSTEM_PROMPT.format(
++                domain_policy=self.domain_policy,
++                agent_instruction=FEDSKILL_AGENT_INSTRUCTION,
++                skills_text=self._format_selected_skills(),
++            )
++
++        return FEDSKILL_DYNAMIC_SYSTEM_PROMPT.format(
++            domain_policy=self.domain_policy,
++            agent_instruction=FEDSKILL_AGENT_INSTRUCTION,
++        )
++
++    def _generate_next_message(
++        self, message: ValidAgentInputMessage, state: LLMAgentStateType
++    ) -> AssistantMessage:
++        """Generate the next message, optionally using hidden dynamic skill retrieval."""
++        if self._injection_mode() == "static":
++            return super()._generate_next_message(message, state)
++
++        if isinstance(message, UserMessage) and message.is_audio:
++            raise ValueError("User message cannot be audio. Use VoiceLLMAgent instead.")
++        if isinstance(message, MultiToolMessage):
++            state.messages.extend(message.tool_messages)
++        else:
++            state.messages.append(message)
++
++        self._turn_index += 1
++        consultation = self._consult_skill_librarian(state.messages)
++        dynamic_system_messages = []
++        selected_skills = consultation.get("selected_skills") or []
++        if selected_skills:
++            dynamic_system_messages.append(
++                SystemMessage(
++                    role="system",
++                    content=FEDSKILL_RETRIEVED_SKILLS_PROMPT.format(
++                        skills_text=self._format_skills(selected_skills)
++                    ),
++                )
++            )
++
++        messages = state.system_messages + dynamic_system_messages + state.messages
++        assistant_message = generate(
++            model=self.llm,
++            tools=self.tools,
++            messages=messages,
++            call_name="agent_response",
++            **self.llm_args,
++        )
++        return assistant_message
++
++    def _injection_mode(self) -> str:
++        mode = os.environ.get("FEDSKILL_TAU2_INJECTION_MODE", "dynamic").strip().lower()
++        if mode in {"static", "pretask", "pre_task"}:
++            return "static"
++        return "dynamic"
++
++    def _resolve_skill_log_path(self) -> Optional[Path]:
++        explicit_path = os.environ.get("FEDSKILL_TAU2_SKILL_LOG_PATH", "").strip()
++        if explicit_path:
++            return Path(explicit_path)
++
++        skills_path = os.environ.get("FEDSKILL_TAU2_SKILLS_PATH", "").strip()
++        if skills_path:
++            return Path(skills_path).with_name("runtime_skill_consultations.jsonl")
++        return None
++
++    def _consult_skill_librarian(
++        self, messages: list[APICompatibleMessage]
++    ) -> dict[str, Any]:
++        self._consultation_index += 1
++        event: dict[str, Any] = {
++            "timestamp": datetime.now(timezone.utc).isoformat(),
++            "mode": "dynamic_hidden_subagent",
++            "task_id": self._task_id(),
++            "turn_index": self._turn_index,
++            "consultation_index": self._consultation_index,
++            "need_skills": False,
++            "query": "",
++            "reason": "",
++            "selected_skills": [],
++            "sufficient": False,
++        }
++
++        if not self._skills:
++            event["reason"] = "No FedSkill skills loaded."
++            self._log_skill_event(event)
++            return event
++
++        decision = self._make_skill_query_decision(messages)
++        event.update(
++            {
++                "need_skills": bool(decision.get("need_skills")),
++                "query": str(decision.get("query") or "").strip(),
++                "reason": str(decision.get("reason") or "").strip(),
++            }
++        )
++
++        if not event["need_skills"] or not event["query"]:
++            self._log_skill_event(event)
++            return event
++
++        query = event["query"]
++        selected_items: list[dict[str, Any]] = []
++        rounds: list[dict[str, Any]] = []
++        max_rounds = max(1, int(os.environ.get("FEDSKILL_TAU2_LIBRARIAN_MAX_ROUNDS", "2")))
++
++        for round_index in range(1, max_rounds + 1):
++            candidates = self._retrieve_skills(query, max_skills=self._candidate_count())
++            judgment = self._judge_retrieved_skills(query, candidates, messages)
++            selected_items = self._select_judged_skills(candidates, judgment)
++
++            rounds.append(
++                {
++                    "round": round_index,
++                    "query": query,
++                    "candidates": self._retrieval_log(candidates),
++                    "judgment": judgment,
++                    "selected": self._retrieval_log(selected_items),
++                }
++            )
++
++            event["sufficient"] = bool(judgment.get("sufficient"))
++            refined_query = str(judgment.get("refined_query") or "").strip()
++            if event["sufficient"] or not refined_query or refined_query == query:
++                break
++            query = refined_query
++
++        event["final_query"] = query
++        event["librarian_rounds"] = rounds
++        event["selected_skills"] = [item["skill"] for item in selected_items]
++        event["retrieval"] = self._retrieval_log(selected_items)
++        self._log_skill_event(event)
++        return event
++
++    def _make_skill_query_decision(
++        self, messages: list[APICompatibleMessage]
++    ) -> dict[str, Any]:
++        recent_context = self._format_recent_context(messages)
++        prompt = (
++            f"Task context:\n{self._task_text()}\n\n"
++            f"Recent conversation/tool context:\n{recent_context}\n\n"
++            "Should the agent consult the FedSkill skill library before the next response?"
++        )
++        query_llm_args = dict(self.llm_args or {})
++        query_llm_args["temperature"] = 0
++        try:
++            response = generate(
++                model=self.llm,
++                messages=[
++                    SystemMessage(role="system", content=FEDSKILL_QUERY_SYSTEM_PROMPT),
++                    UserMessage(role="user", content=prompt),
++                ],
++                call_name="fedskill_skill_query",
++                **query_llm_args,
++            )
++            content = response.content or ""
++            data = json.loads(extract_json_from_llm_response(content))
++            if isinstance(data, dict):
++                return data
++        except Exception as exc:
++            logger.warning(f"FedSkill skill query decision failed: {exc}")
++
++        return self._fallback_skill_query_decision(messages)
++
++    def _fallback_skill_query_decision(
++        self, messages: list[APICompatibleMessage]
++    ) -> dict[str, Any]:
++        recent_context = self._format_recent_context(messages, max_messages=4)
++        task_text = self._task_text()
++        text = f"{task_text}\n{recent_context}".lower()
++        triggers = (
++            "cancel",
++            "cancellation",
++            "refund",
++            "compensation",
++            "upgrade",
++            "change",
++            "reservation",
++            "flight",
++            "policy",
++            "eligib",
++            "price",
++            "cost",
++            "total",
++        )
++        need_skills = any(trigger in text for trigger in triggers)
++        return {
++            "need_skills": need_skills,
++            "query": recent_context if need_skills else "",
++            "reason": "Fallback keyword-based decision.",
++        }
++
++    def _retrieve_skills(
++        self, query: str, max_skills: Optional[int] = None
++    ) -> list[dict[str, Any]]:
++        if max_skills is None:
++            max_skills = self._dynamic_top_k()
++        query_tokens = self._tokens(query)
++        scored: list[dict[str, Any]] = []
++        seen_keys: set[str] = set()
++
++        for skill in self._skills:
++            if skill.get("retired"):
++                continue
++            key = str(skill.get("id") or skill.get("name") or json.dumps(skill, sort_keys=True))
++            if key in seen_keys:
++                continue
++            seen_keys.add(key)
++
++            skill_text = self._skill_text(skill)
++            skill_tokens = self._tokens(skill_text)
++            overlap = len(query_tokens & skill_tokens)
++            quality = self._skill_quality(skill)
++            level_bonus = float(skill.get("level") or 0.0) * 0.1
++            score = overlap + quality + level_bonus
++            if overlap < self._min_overlap():
++                continue
++            scored.append(
++                {
++                    "score": score,
++                    "overlap": overlap,
++                    "quality": quality,
++                    "level_bonus": level_bonus,
++                    "skill": skill,
++                }
++            )
++
++        scored.sort(key=lambda item: item["score"], reverse=True)
++        return scored[:max_skills]
++
++    def _judge_retrieved_skills(
++        self,
++        query: str,
++        candidates: list[dict[str, Any]],
++        messages: list[APICompatibleMessage],
++    ) -> dict[str, Any]:
++        if not candidates:
++            return {
++                "sufficient": False,
++                "selected_skill_ids": [],
++                "selected_skill_names": [],
++                "refined_query": query,
++                "reason": "No candidates retrieved.",
++            }
++
++        candidate_text = self._format_candidate_skills_for_judge(candidates)
++        prompt = (
++            f"Task context:\n{self._task_text()}\n\n"
++            f"Recent conversation/tool context:\n{self._format_recent_context(messages)}\n\n"
++            f"Skill query:\n{query}\n\n"
++            f"Retrieved candidate skills:\n{candidate_text}\n\n"
++            f"Select at most {self._dynamic_top_k()} skills."
++        )
++        judge_llm_args = dict(self.llm_args or {})
++        judge_llm_args["temperature"] = 0
++        try:
++            response = generate(
++                model=self.llm,
++                messages=[
++                    SystemMessage(role="system", content=FEDSKILL_JUDGE_SYSTEM_PROMPT),
++                    UserMessage(role="user", content=prompt),
++                ],
++                call_name="fedskill_skill_judge",
++                **judge_llm_args,
++            )
++            content = response.content or ""
++            data = json.loads(extract_json_from_llm_response(content))
++            if isinstance(data, dict):
++                return data
++        except Exception as exc:
++            logger.warning(f"FedSkill skill judge failed: {exc}")
++
++        return {
++            "sufficient": bool(candidates) and candidates[0]["overlap"] >= self._min_overlap(),
++            "selected_skill_ids": [
++                str(item["skill"].get("id"))
++                for item in candidates[: self._dynamic_top_k()]
++                if item["skill"].get("id") is not None
++            ],
++            "selected_skill_names": [
++                str(item["skill"].get("name"))
++                for item in candidates[: self._dynamic_top_k()]
++                if item["skill"].get("name") is not None
++            ],
++            "refined_query": "",
++            "reason": "Fallback heuristic judge.",
++        }
++
++    def _select_judged_skills(
++        self, candidates: list[dict[str, Any]], judgment: dict[str, Any]
++    ) -> list[dict[str, Any]]:
++        selected_ids = {str(item) for item in judgment.get("selected_skill_ids", [])}
++        selected_names = {str(item) for item in judgment.get("selected_skill_names", [])}
++
++        selected = []
++        for item in candidates:
++            skill = item["skill"]
++            skill_id = str(skill.get("id"))
++            skill_name = str(skill.get("name"))
++            if skill_id in selected_ids or skill_name in selected_names:
++                selected.append(item)
++            if len(selected) >= self._dynamic_top_k():
++                break
++
++        if not selected and judgment.get("sufficient"):
++            selected = candidates[: self._dynamic_top_k()]
++        return selected
++
++    def _format_candidate_skills_for_judge(self, candidates: list[dict[str, Any]]) -> str:
++        lines = []
++        for idx, item in enumerate(candidates, start=1):
++            skill = item["skill"]
++            lines.append(
++                f"[{idx}] id={skill.get('id')} name={skill.get('name')} "
++                f"level={skill.get('level')} skill_score={skill.get('score')} "
++                f"quality_score={skill.get('quality_score')} effectiveness={skill.get('effectiveness')} "
++                f"retrieval_score={item['score']:.2f}\n"
++                f"When to use: {skill.get('when_to_use', skill.get('description', ''))}\n"
++                f"Procedure: {skill.get('procedure', '')}"
++            )
++        return "\n\n".join(lines)
++
++    def _retrieval_log(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
++        return [
++            {
++                "rank": idx,
++                "id": item["skill"].get("id"),
++                "name": item["skill"].get("name"),
++                "level": item["skill"].get("level"),
++                "skill_score": item["skill"].get("score"),
++                "quality_score": item["skill"].get("quality_score"),
++                "effectiveness": item["skill"].get("effectiveness"),
++                "overlap": item["overlap"],
++                "quality": item["quality"],
++                "level_bonus": item["level_bonus"],
++                "retrieval_score": item["score"],
++            }
++            for idx, item in enumerate(items, start=1)
++        ]
++
++    def _dynamic_top_k(self) -> int:
++        return int(os.environ.get("FEDSKILL_TAU2_DYNAMIC_TOP_K", "3"))
++
++    def _candidate_count(self) -> int:
++        configured = int(os.environ.get("FEDSKILL_TAU2_RETRIEVAL_CANDIDATES", "8"))
++        return max(configured, self._dynamic_top_k())
++
++    def _min_overlap(self) -> int:
++        return int(os.environ.get("FEDSKILL_TAU2_MIN_SKILL_OVERLAP", "1"))
++
++    def _format_recent_context(
++        self, messages: list[APICompatibleMessage], max_messages: Optional[int] = None
++    ) -> str:
++        if max_messages is None:
++            max_messages = int(os.environ.get("FEDSKILL_TAU2_CONTEXT_MESSAGES", "8"))
++        lines = []
++        for msg in messages[-max_messages:]:
++            role = getattr(msg, "role", msg.__class__.__name__)
++            content = getattr(msg, "content", None)
++            tool_calls = getattr(msg, "tool_calls", None) or []
++            if tool_calls:
++                calls = []
++                for tool_call in tool_calls:
++                    calls.append(
++                        f"{getattr(tool_call, 'name', '')}({json.dumps(getattr(tool_call, 'arguments', {}), ensure_ascii=False)})"
++                    )
++                lines.append(f"{role}: tool_calls={'; '.join(calls)}")
++            elif content:
++                text = str(content).replace("\n", " ")
++                lines.append(f"{role}: {text[:1200]}")
++        return "\n".join(lines) or "No recent context."
++
++    def _log_skill_event(self, event: dict[str, Any]) -> None:
++        if self._skill_log_path is None:
++            return
++        try:
++            self._skill_log_path.parent.mkdir(parents=True, exist_ok=True)
++            log_event = dict(event)
++            log_event["selected_skills"] = [
++                {
++                    "id": skill.get("id"),
++                    "name": skill.get("name"),
++                    "level": skill.get("level"),
++                    "score": skill.get("score"),
++                }
++                for skill in event.get("selected_skills", [])
++            ]
++            with open(self._skill_log_path, "a", encoding="utf-8") as f:
++                f.write(json.dumps(log_event, ensure_ascii=False) + "\n")
++        except Exception as exc:
++            logger.warning(f"Failed to write FedSkill skill log: {exc}")
++
++    def _task_id(self) -> Optional[str]:
++        if self.task is None:
++            return None
++        return str(getattr(self.task, "id", ""))
++
++    def _format_skills(self, selected: list[dict]) -> str:
++        if not selected:
++            return "No sufficiently relevant FedSkill skills were retrieved for this turn."
++
++        blocks = []
++        for idx, skill in enumerate(selected, start=1):
++            examples = skill.get("examples") or []
++            example_text = f"\nExample: {examples[0]}" if examples else ""
++            blocks.append(
++                f"Skill {idx}: {skill.get('name', 'Unnamed Skill')}\n"
++                f"When to use: {skill.get('when_to_use', skill.get('description', ''))}\n"
++                f"Procedure: {skill.get('procedure', '')}"
++                f"{example_text}"
++            )
++        return "\n\n".join(blocks)
++
++    def _skill_text(self, skill: dict) -> str:
++        return " ".join(
++            str(skill.get(key, ""))
++            for key in ("name", "description", "when_to_use", "procedure", "category")
++        )
++
++    def _static_system_prompt(self) -> str:
++        return FEDSKILL_SYSTEM_PROMPT.format(
++            domain_policy=self.domain_policy,
++            agent_instruction=FEDSKILL_AGENT_INSTRUCTION,
++            skills_text=self._format_selected_skills(),
++        )
++
++    def _load_skills(self) -> list[dict]:
++        path = os.environ.get("FEDSKILL_TAU2_SKILLS_PATH", "").strip()
++        if not path:
++            return []
++
++        skill_path = Path(path)
++        if not skill_path.exists():
++            logger.warning(f"FEDSKILL_TAU2_SKILLS_PATH not found: {skill_path}")
++            return []
++
++        try:
++            with open(skill_path, "r", encoding="utf-8") as f:
++                data = json.load(f)
++        except Exception as exc:
++            logger.warning(f"Failed to load FedSkill skills from {skill_path}: {exc}")
++            return []
++
++        if isinstance(data, dict):
++            data = data.get("skills", [])
++        return [item for item in data if isinstance(item, dict)]
++
++    def _format_selected_skills(self) -> str:
++        selected = self._select_skills()
++        if not selected:
++            return "No FedSkill skills were loaded for this run."
++        return self._format_skills(selected)
++
++    def _select_skills(self) -> list[dict]:
++        max_skills = int(os.environ.get("FEDSKILL_TAU2_MAX_SKILLS", "5"))
++        if len(self._skills) <= max_skills:
++            return self._skills
++
++        # AWM-style embedding retrieval: cosine similarity only, no quality/level bonus.
++        score_mode = os.environ.get("FEDSKILL_TAU2_SCORE_MODE", "token_overlap").strip().lower()
++        if score_mode == "embedding":
++            return self._select_skills_by_embedding(max_skills)
++
++        task_tokens = self._tokens(self._task_text())
++        scored = []
++        seen_keys: set[str] = set()
++        for skill in self._skills:
++            if skill.get("retired"):
++                continue
++            key = str(skill.get("id") or skill.get("name") or json.dumps(skill, sort_keys=True))
++            if key in seen_keys:
++                continue
++            seen_keys.add(key)
++
++            skill_text = self._skill_text(skill)
++            skill_tokens = self._tokens(skill_text)
++            overlap = len(task_tokens & skill_tokens)
++            quality = self._skill_quality(skill)
++            level = float(skill.get("level") or 0.0) * 0.1
++            scored.append((overlap + quality + level, skill))
++
++        scored.sort(key=lambda item: item[0], reverse=True)
++        return [skill for _, skill in scored[:max_skills]]
++
++    def _select_skills_by_embedding(self, max_skills: int) -> list[dict]:
++        """AWM-style retrieval: cosine similarity between task and skill embeddings.
++
++        Pure similarity ranking with no quality_score or level bonus, mirroring
++        the embedding-based workflow memory retrieval used in Agent Workflow
++        Memory (Wang et al., 2024). MiniLM-L6-v2 is loaded lazily and cached at
++        the class level so the 50-task evaluation pays the load cost once.
++        """
++        try:
++            import numpy as np
++        except ImportError:
++            logger.warning("numpy not available; falling back to token overlap.")
++            return self._select_skills_fallback(max_skills)
++
++        skill_texts: list[str] = []
++        candidates: list[dict] = []
++        seen_keys: set[str] = set()
++        for skill in self._skills:
++            if skill.get("retired"):
++                continue
++            key = str(skill.get("id") or skill.get("name") or json.dumps(skill, sort_keys=True))
++            if key in seen_keys:
++                continue
++            seen_keys.add(key)
++            skill_texts.append(self._skill_text(skill))
++            candidates.append(skill)
++
++        if len(candidates) <= max_skills:
++            return candidates
++
++        cache = type(self)._fedskill_embedding_cache
++        cache_key = id(self._skills)
++        cached = cache.get(cache_key)
++        if cached is None or cached.get("count") != len(candidates):
++            try:
++                from sentence_transformers import SentenceTransformer
++            except ImportError:
++                logger.warning("sentence_transformers not available; falling back to token overlap.")
++                return self._select_skills_fallback(max_skills)
++            model_name = os.environ.get(
++                "FEDSKILL_TAU2_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
++            )
++            model = type(self)._fedskill_embedding_model
++            if model is None or type(self)._fedskill_embedding_model_name != model_name:
++                logger.info(f"Loading embedding model for AWM retrieval: {model_name}")
++                model = SentenceTransformer(model_name)
++                type(self)._fedskill_embedding_model = model
++                type(self)._fedskill_embedding_model_name = model_name
++            skill_emb = model.encode(skill_texts, normalize_embeddings=True, show_progress_bar=False)
++            cache[cache_key] = {"emb": np.asarray(skill_emb), "count": len(candidates), "model": model}
++            cached = cache[cache_key]
++
++        task_text = self._task_text()
++        model = cached["model"]
++        task_emb = model.encode([task_text], normalize_embeddings=True, show_progress_bar=False)
++        sims = (np.asarray(task_emb) @ cached["emb"].T)[0]
++        top_idx = np.argsort(-sims)[:max_skills]
++        return [candidates[int(i)] for i in top_idx]
++
++    def _select_skills_fallback(self, max_skills: int) -> list[dict]:
++        task_tokens = self._tokens(self._task_text())
++        scored = []
++        seen_keys: set[str] = set()
++        for skill in self._skills:
++            if skill.get("retired"):
++                continue
++            key = str(skill.get("id") or skill.get("name") or json.dumps(skill, sort_keys=True))
++            if key in seen_keys:
++                continue
++            seen_keys.add(key)
++            skill_text = self._skill_text(skill)
++            skill_tokens = self._tokens(skill_text)
++            overlap = len(task_tokens & skill_tokens)
++            scored.append((overlap, skill))
++        scored.sort(key=lambda item: item[0], reverse=True)
++        return [skill for _, skill in scored[:max_skills]]
++
++    def _skill_quality(self, skill: dict) -> float:
++        quality_score = skill.get("quality_score")
++        if quality_score is not None:
++            try:
++                quality = float(quality_score)
++                if quality > 0.0:
++                    return max(0.0, min(1.0, quality))
++            except (TypeError, ValueError):
++                pass
++
++        base_score = float(skill.get("score") or 0.0)
++        if base_score > 1.0:
++            base_score = base_score / 10.0
++        effectiveness = float(skill.get("effectiveness") or 0.0)
++        if effectiveness > 0.0:
++            return max(0.0, min(1.0, 0.7 * base_score + 0.3 * effectiveness))
++        return max(0.0, min(1.0, base_score))
++
++    def _task_text(self) -> str:
++        if self.task is None:
++            return self.domain_policy
++        try:
++            return json.dumps(self.task.model_dump(mode="json"), ensure_ascii=False)
++        except Exception:
++            return str(self.task)
++
++    @staticmethod
++    def _tokens(text: str) -> set[str]:
++        return {tok for tok in re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{3,}", text.lower())}
++
++
+ AGENT_GT_INSTRUCTION = """
+ You are testing that our user simulator is working correctly.
+ User simulator will have an issue for you to solve.
+@@ -504,6 +1212,17 @@ def create_llm_agent(tools, domain_policy, **kwargs):
+     )
+ 
+ 
++def create_fedskill_llm_agent(tools, domain_policy, **kwargs):
++    """Factory function for FedSkillLLMAgent."""
++    return FedSkillLLMAgent(
++        tools=tools,
++        domain_policy=domain_policy,
++        llm=kwargs.get("llm"),
++        llm_args=kwargs.get("llm_args"),
++        task=kwargs.get("task"),
++    )
++
++
+ def create_llm_gt_agent(tools, domain_policy, **kwargs):
+     """Factory function for LLMGTAgent.
+ 
+diff --git a/src/tau2/registry.py b/src/tau2/registry.py
+index 86a97a1..f155b5b 100644
+--- a/src/tau2/registry.py
++++ b/src/tau2/registry.py
+@@ -8,6 +8,7 @@ from tau2.agent.discrete_time_audio_native_agent import (
+     create_discrete_time_audio_native_agent,
+ )
+ from tau2.agent.llm_agent import (
++    create_fedskill_llm_agent,
+     LLMGTAgent,
+     LLMSoloAgent,
+     create_llm_agent,
+@@ -295,6 +296,7 @@ try:
+ 
+     # Agent factories
+     registry.register_agent_factory(create_llm_agent, "llm_agent")
++    registry.register_agent_factory(create_fedskill_llm_agent, "fedskill_llm_agent")
+     registry.register_agent_factory(
+         create_llm_gt_agent,
+         "llm_agent_gt",

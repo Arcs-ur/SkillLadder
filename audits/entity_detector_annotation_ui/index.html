@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entity Audit</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <strong>Entity Audit</strong>
+      <span id="run-name">Loading...</span>
+    </div>
+    <nav class="mode-tabs" aria-label="标注模式">
+      <button data-mode="a" class="active">标注员 A</button>
+      <button data-mode="b">标注员 B</button>
+      <button data-mode="adjudicated">仲裁</button>
+    </nav>
+    <div class="header-progress">
+      <span id="global-progress">0 / 0</span>
+      <span id="save-state" class="save-state">已保存</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="document-sidebar">
+      <div class="sidebar-tools">
+        <input id="search" type="search" placeholder="搜索文档">
+        <div class="filters">
+          <select id="domain-filter" aria-label="领域">
+            <option value="">全部领域</option>
+          </select>
+          <select id="status-filter" aria-label="状态">
+            <option value="pending">待处理</option>
+            <option value="">全部状态</option>
+            <option value="complete">已完成</option>
+            <option value="disagreement">有分歧</option>
+          </select>
+        </div>
+      </div>
+      <div id="document-list" class="document-list"></div>
+    </aside>
+
+    <section class="document-workbench">
+      <div class="document-toolbar">
+        <div>
+          <h1 id="document-title">选择一个文档</h1>
+          <p id="document-meta"></p>
+        </div>
+        <div class="toolbar-actions">
+          <button id="previous-document" class="icon-button" title="上一个文档" aria-label="上一个文档">←</button>
+          <button id="next-document" class="icon-button" title="下一个文档" aria-label="下一个文档">→</button>
+          <button id="review-toggle" class="review-button" disabled>标记文档完成</button>
+        </div>
+      </div>
+      <div class="selection-toolbar" id="selection-toolbar" hidden>
+        <span id="selection-summary"></span>
+        <select id="addition-type" aria-label="漏检实体类型"></select>
+        <input id="addition-notes" type="text" placeholder="备注（可选）">
+        <button id="add-selection">添加漏检实体</button>
+        <button id="cancel-selection" class="quiet-button">取消</button>
+      </div>
+      <div id="document-text" class="document-text" tabindex="0">
+        从左侧选择一个文档开始标注。
+      </div>
+    </section>
+
+    <aside class="annotation-sidebar">
+      <div class="annotation-heading">
+        <div>
+          <h2>候选实体</h2>
+          <p id="candidate-progress">0 / 0</p>
+        </div>
+        <label class="toggle-label">
+          <input id="unlabeled-only" type="checkbox" checked>
+          仅待标注
+        </label>
+      </div>
+      <div id="candidate-list" class="candidate-list"></div>
+      <div class="addition-section">
+        <div class="annotation-heading">
+          <div>
+            <h2>漏检实体</h2>
+            <p id="addition-count">0</p>
+          </div>
+        </div>
+        <div id="addition-list" class="addition-list"></div>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Reproduction artifacts are intentionally excluded from the release.
+output/
+outputs/
+results/
+logs/
+artifacts/
+skills_from_train/
+*.log
+*.jsonl

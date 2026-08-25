@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use SkillLadder, please cite the EMNLP 2026 Findings paper."
+title: "SkillLadder: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis"
+type: software
+version: 1.0.0
+date-released: 2026-08-24
+repository-code: "https://github.com/Arcs-ur/SkillLadder"
+license: Apache-2.0
+authors:
+  - family-names: Chen
+    given-names: Nan
+  - family-names: Wang
+    given-names: Yi
+  - family-names: Zhu
+    given-names: "Bin Benjamin"
+  - family-names: Xiong
+    given-names: Haoyi
+preferred-citation:
+  type: conference-paper
+  title: "SkillLadder: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis"
+  authors:
+    - family-names: Chen
+      given-names: Nan
+    - family-names: Wang
+      given-names: Yi
+    - family-names: Zhu
+      given-names: "Bin Benjamin"
+    - family-names: Xiong
+      given-names: Haoyi
+  conference:
+    name: "Findings of the Association for Computational Linguistics: EMNLP 2026"
+  year: 2026

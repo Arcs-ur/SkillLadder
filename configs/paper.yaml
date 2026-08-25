@@ -1,0 +1,46 @@
+paper:
+  title: "SkillLadder: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis"
+  venue: "Findings of EMNLP 2026"
+
+benchmark:
+  name: tau2-bench
+  revision: "01e812d1d1c4df6d8d2299bf175e482527112244"
+  num_trials: 1
+  max_steps: 30
+  max_retries: 0
+  agent_temperature: 0.2
+  user_temperature: 0.2
+
+skill_evolution:
+  rounds: 3
+  clustering_strategy: hybrid
+  embedding_model: all-MiniLM-L6-v2
+  distance_threshold: 0.5
+  max_cluster_size: 8
+  min_cluster_size: 2
+  minimum_judge_score: 1.0
+  score_gap_demotion_ratio: 0.3
+  max_synthesis_retries: 2
+  extraction_temperature: 0.4
+  synthesis_temperature: 0.5
+  gate_temperature: 0.2
+
+retrieval:
+  static_top_k: 10
+  dynamic_top_k: 3
+  retrieval_candidates: 8
+  librarian_max_rounds: 2
+  minimum_token_overlap: 1
+
+task_splits:
+  airline: configs/task_splits/airline_50.json
+  banking_knowledge: configs/task_splits/banking_knowledge_97.json
+  retail: configs/task_splits/retail_114.json
+  telecom: configs/task_splits/telecom_200.json
+
+models:
+  note: "Set provider-specific model identifiers through environment variables."
+  main_agent_and_user_simulator: "Claude Sonnet 4.6"
+  transfer_targets:
+    - Qwen3-32B
+    - Qwen3-8B
