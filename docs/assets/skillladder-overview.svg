@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="518" viewBox="0 0 1200 518" role="img" aria-labelledby="title description">
+  <title id="title">SkillLadder method overview and sharing boundaries</title>
+  <desc id="description">Contributor-local traces produce scrubbed L0 skills for a trusted coordinator. An illustrative hierarchy synthesizes L0 into L1, L2 and L3 under quality gates, retaining parents if a candidate is rejected. Sanitized L1 through L3 skills are shared with receiving agents for static or dynamic retrieval. Raw traces and private parent identifiers remain internal.</desc>
+  <!-- Original schematic of the disclosed method, not an experimental result. -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1 1 L7 4 L1 7" fill="none" stroke="#49705b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <g id="trace">
+      <rect width="130" height="70" rx="10" fill="#ffffff" stroke="#c8d5c9"/>
+      <path d="M14 34 H70 M14 44 H97 M14 54 H83" fill="none" stroke="#b9c9b9" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <g id="local-skill">
+      <rect width="52" height="28" rx="7" fill="#e0e8df" stroke="#bacbbc"/>
+      <path d="M11 10 H35 M11 18 H28" fill="none" stroke="#78917b" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <g id="level-one">
+      <rect width="60" height="28" rx="7" fill="#b7d9ca" stroke="#87b69f"/>
+      <path d="M12 10 H43 M12 18 H35" fill="none" stroke="#52836c" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <g id="level-two">
+      <rect width="60" height="28" rx="7" fill="#e5cf9e" stroke="#cbb071"/>
+      <path d="M12 10 H43 M12 18 H35" fill="none" stroke="#9c793d" stroke-width="2" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="516" rx="22" fill="#fbfcf8" stroke="#e0e7df"/>
+  <rect x="26" y="44" width="252" height="444" rx="16" fill="#f0f4ed" stroke="#d2ddcf"/>
+  <rect x="310" y="44" width="576" height="444" rx="16" fill="#f8f8f0" stroke="#d9dfcf"/>
+  <rect x="910" y="44" width="264" height="444" rx="16" fill="#eef5ef" stroke="#cbded0"/>
+
+  <g font-family="Times New Roman, Times, serif" fill="#234837">
+    <text x="50" y="78" font-size="22" font-weight="bold">Contributor-local</text>
+    <text x="334" y="78" font-size="22" font-weight="bold">Trusted coordinator</text>
+    <text x="934" y="78" font-size="22" font-weight="bold">Receiving agents</text>
+    <text x="50" y="102" font-size="17" fill="#64735f">Collect and extract</text>
+    <text x="934" y="102" font-size="17" fill="#64735f">Share and reuse</text>
+
+    <use href="#trace" x="50" y="126"/>
+    <use href="#trace" x="50" y="238"/>
+    <use href="#trace" x="50" y="350"/>
+    <text x="64" y="150" font-size="17">Source A</text>
+    <text x="64" y="262" font-size="17">Source B</text>
+    <text x="64" y="374" font-size="17">Source C</text>
+    <g fill="none" stroke="#49705b" stroke-width="2" marker-end="url(#arrow)">
+      <path d="M180 161 H211"/>
+      <path d="M180 273 H211"/>
+      <path d="M180 385 H211"/>
+    </g>
+    <g fill="#e0e8df" stroke="#bacbbc">
+      <rect x="218" y="144" width="42" height="34" rx="8"/>
+      <rect x="218" y="256" width="42" height="34" rx="8"/>
+      <rect x="218" y="368" width="42" height="34" rx="8"/>
+    </g>
+    <g font-size="19" text-anchor="middle" font-weight="bold">
+      <text x="239" y="167">L0</text>
+      <text x="239" y="279">L0</text>
+      <text x="239" y="391">L0</text>
+    </g>
+    <path d="M260 161 H293 V385 H260 M293 273 H330" fill="none" stroke="#49705b" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="50" y="449" font-size="18">Raw traces stay local.</text>
+    <text x="50" y="473" font-size="17" fill="#64735f">Scrubbed L0 enters evolution.</text>
+
+    <rect x="418" y="130" width="350" height="288" rx="12" fill="#eef3e7" stroke="#c4d4bc" stroke-dasharray="5 5"/>
+    <g text-anchor="middle" font-size="21" font-weight="bold">
+      <text x="364" y="119" fill="#61795f">L0</text>
+      <text x="464" y="119" fill="#2e6953">L1</text>
+      <text x="568" y="119" fill="#88622d">L2</text>
+      <text x="672" y="119" fill="#245d4c">L3</text>
+    </g>
+
+    <g fill="none" stroke="#94ac91" stroke-width="1.8" marker-end="url(#arrow)">
+      <path d="M390 152 L434 169 M390 186 L434 169"/>
+      <path d="M390 220 L434 237 M390 254 L434 237"/>
+      <path d="M390 288 L434 305 M390 322 L434 305"/>
+      <path d="M390 356 L434 373 M390 390 L434 373"/>
+      <path d="M494 169 L538 203 M494 237 L538 203"/>
+      <path d="M494 305 L538 339 M494 373 L538 339"/>
+      <path d="M598 203 L642 271 M598 339 L642 271"/>
+    </g>
+    <use href="#local-skill" x="338" y="138"/>
+    <use href="#local-skill" x="338" y="172"/>
+    <use href="#local-skill" x="338" y="206"/>
+    <use href="#local-skill" x="338" y="240"/>
+    <use href="#local-skill" x="338" y="274"/>
+    <use href="#local-skill" x="338" y="308"/>
+    <use href="#local-skill" x="338" y="342"/>
+    <use href="#local-skill" x="338" y="376"/>
+    <use href="#level-one" x="434" y="155"/>
+    <use href="#level-one" x="434" y="223"/>
+    <use href="#level-one" x="434" y="291"/>
+    <use href="#level-one" x="434" y="359"/>
+    <use href="#level-two" x="538" y="189"/>
+    <use href="#level-two" x="538" y="325"/>
+    <rect x="642" y="257" width="60" height="28" rx="7" fill="#245d4c"/>
+    <path d="M654 267 H685 M654 275 H677" fill="none" stroke="#d7e9da" stroke-width="2" stroke-linecap="round"/>
+    <text x="592" y="406" text-anchor="middle" font-size="16" fill="#52714f">Illustrative L0 → L3 hierarchy</text>
+
+    <path d="M768 271 H934" fill="none" stroke="#49705b" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="786" y="225" width="82" height="28" rx="14" fill="#e6ede0" stroke="#c9d6c1"/>
+    <text x="827" y="245" text-anchor="middle" font-size="17">Sanitize</text>
+    <text x="826" y="302" text-anchor="middle" font-size="17">L1–L3 only</text>
+    <text x="826" y="324" text-anchor="middle" font-size="16" fill="#64735f">New IDs</text>
+    <text x="826" y="345" text-anchor="middle" font-size="16" fill="#64735f">No lineage</text>
+
+    <rect x="334" y="434" width="528" height="38" rx="9" fill="#e8eedf"/>
+    <text x="348" y="459" font-size="18" font-weight="bold">Quality gates</text>
+    <text x="850" y="459" text-anchor="end" font-size="17">Rejected candidate → keep parents</text>
+
+    <rect x="934" y="126" width="216" height="231" rx="12" fill="#ffffff" stroke="#c5d8c7"/>
+    <text x="1042" y="157" text-anchor="middle" font-size="21" font-weight="bold">Shared library</text>
+    <rect x="954" y="179" width="176" height="42" rx="8" fill="#d4e8dd"/>
+    <rect x="954" y="233" width="176" height="42" rx="8" fill="#eee0bd"/>
+    <rect x="954" y="287" width="176" height="42" rx="8" fill="#245d4c"/>
+    <text x="969" y="207" font-size="19" font-weight="bold">L1</text>
+    <text x="969" y="261" font-size="19" font-weight="bold" fill="#71552c">L2</text>
+    <text x="969" y="315" font-size="19" font-weight="bold" fill="#ffffff">L3</text>
+    <g fill="none" stroke-width="2.5" stroke-linecap="round">
+      <path d="M1004 195 H1112 M1004 205 H1094" stroke="#87ac96"/>
+      <path d="M1004 249 H1112 M1004 259 H1094" stroke="#b89a59"/>
+      <path d="M1004 303 H1112 M1004 313 H1094" stroke="#bad8c7"/>
+    </g>
+    <path d="M1042 357 V384" fill="none" stroke="#49705b" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="934" y="392" width="216" height="84" rx="11" fill="#e4eee4" stroke="#c5d8c7"/>
+    <text x="1042" y="418" text-anchor="middle" font-size="19" font-weight="bold">Task-aware retrieval</text>
+    <text x="1042" y="442" text-anchor="middle" font-size="17">Static top-k</text>
+    <text x="1042" y="463" text-anchor="middle" font-size="17">Dynamic librarian</text>
+  </g>
+</svg>

@@ -6,20 +6,16 @@ Claude-scored parent, and asks a non-Claude OpenAI-compatible judge to score
 both skills on the same task-description subset.
 
 Example:
-  DEEPSEEK_API_KEY=... .venv/bin/python tools/non_claude_judge_review.py \
-    --provider deepseek --limit 40 --levels 2,3
-
-  ZAI_API_KEY=... .venv/bin/python tools/non_claude_judge_review.py \
-    --provider zai --model glm-5.2 --limit 40 --levels 2,3
-
-  OPENAI_API_KEY=... .venv/bin/python tools/non_claude_judge_review.py \
-    --provider openai --model gpt-4.1-mini --limit 40 --levels 2,3
+  OPENAI_API_KEY=... .venv/bin/python audits/non_claude_judge_review.py \
+    --provider openai --model gpt-4.1-mini --limit 40 --levels 2,3 \
+    --artifact-dir output/retail/<run>/skills_from_train
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import math
 import os
 import random
 import re
@@ -34,13 +30,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from openai import OpenAI  # noqa: E402
+from fedskill.eval.privacy_eval import _source_resolver  # noqa: E402
+from fedskill.models.skill import Skill  # noqa: E402
 
 OUTPUT_ROOT = REPO_ROOT / "output"
 DEFAULT_ARTIFACT_DIRS = [
-    OUTPUT_ROOT / "tau2_airline_train50" / "skills_from_train",
-    OUTPUT_ROOT / "tau2_banking_knowledge_all97_max50" / "skills_from_train",
-    OUTPUT_ROOT / "tau2_retail_all114" / "skills_from_train",
-    OUTPUT_ROOT / "tau2_telecom_remaining200_max50" / "skills_from_train",
+    OUTPUT_ROOT / domain / "skills_from_train"
+    for domain in ("airline", "banking_knowledge", "retail", "telecom")
 ]
 
 PROVIDERS = {
@@ -139,14 +135,18 @@ def compact_skill(skill: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def score_from_per_task(rows: list[dict[str, Any]]) -> float:
+def score_from_per_task(rows: list[dict[str, Any]], expected_tasks: int | None = None) -> float:
+    if not isinstance(rows, list) or (expected_tasks is not None and len(rows) != expected_tasks):
+        raise ValueError("Judge scores must cover exactly the requested tasks.")
     applicable = []
     for row in rows:
-        try:
-            app = float(row.get("applicability", 0))
-            rel = float(row.get("relevance", 0))
-        except (TypeError, ValueError):
-            continue
+        if not isinstance(row, dict):
+            raise ValueError("Each judge task score must be an object.")
+        for key in ("applicability", "relevance"):
+            value = row.get(key)
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 10:
+                raise ValueError(f"Judge {key} must be finite in [0, 10].")
+        app, rel = row["applicability"], row["relevance"]
         if app >= 3:
             applicable.append(rel)
     if not rows or not applicable:
@@ -171,24 +171,40 @@ def extract_json(text: str) -> dict[str, Any]:
 def load_tasks(artifact_dir: Path, tasks_per_domain: int, seed: int) -> list[str]:
     sessions = load_json(artifact_dir / "sessions.json")
     tasks = [s.get("task_description", "") for s in sessions if s.get("task_description")]
+    if not tasks:
+        raise ValueError(f"No scoring task descriptions in {artifact_dir / 'sessions.json'}")
     rng = random.Random(seed)
     if len(tasks) > tasks_per_domain:
         tasks = rng.sample(tasks, tasks_per_domain)
     return tasks
 
 
+def artifact_domain(artifact_dir):
+    sessions = load_json(artifact_dir / "sessions.json")
+    domains = {(s.get("metadata") or {}).get("domain") for s in sessions}
+    domains.discard(None)
+    if len(domains) > 1:
+        raise ValueError(f"Multiple domains in {artifact_dir}")
+    return next(iter(domains)) if domains else artifact_dir.parent.name
+
+
 def build_pairs(artifact_dirs: list[Path], levels: set[int], seed: int) -> list[Pair]:
     pairs: list[Pair] = []
+    seen_domains = set()
     for artifact_dir in artifact_dirs:
         if not artifact_dir.exists():
-            continue
-        domain = artifact_dir.parts[-2]
+            raise ValueError(f"Missing artifact directory {artifact_dir}; pass --artifact-dir explicitly.")
+        domain = artifact_domain(artifact_dir)
+        if domain in seen_domains:
+            raise ValueError(f"Supply one artifact directory per domain; duplicate domain {domain}.")
+        seen_domains.add(domain)
         id_to_skill: dict[str, dict[str, Any]] = {}
         for name in ("level0_all.json", "round1_skills.json", "round2_skills.json", "round3_skills.json"):
             for skill in load_json(artifact_dir / name):
                 sid = skill.get("id")
                 if sid:
                     id_to_skill[sid] = skill
+        resolve = _source_resolver([Skill.from_dict(s) for s in id_to_skill.values()])
 
         for round_id in (1, 2, 3):
             for child in load_json(artifact_dir / f"round{round_id}_skills.json"):
@@ -196,9 +212,10 @@ def build_pairs(artifact_dirs: list[Path], levels: set[int], seed: int) -> list[
                 if level != round_id or level not in levels:
                     continue
                 parent_ids = child.get("parent_ids") or []
+                resolve(Skill.from_dict(child))
                 parents = [id_to_skill[pid] for pid in parent_ids if pid in id_to_skill]
                 if not parents:
-                    continue
+                    raise ValueError(f"Missing parent lineage for {child.get('id')} in {artifact_dir}")
                 parent = max(parents, key=lambda s: float(s.get("score") or 0.0))
                 pairs.append(
                     Pair(
@@ -212,6 +229,8 @@ def build_pairs(artifact_dirs: list[Path], levels: set[int], seed: int) -> list[
                     )
                 )
     random.Random(seed).shuffle(pairs)
+    if not pairs:
+        raise ValueError("No eligible child-parent pairs in the supplied artifacts and levels.")
     return pairs
 
 
@@ -294,8 +313,8 @@ def judge_pair(
     parsed = extract_json(text)
     child_rows = parsed.get("skill_a") or []
     parent_rows = parsed.get("skill_b") or []
-    child_score = score_from_per_task(child_rows)
-    parent_score = score_from_per_task(parent_rows)
+    child_score = score_from_per_task(child_rows, len(tasks))
+    parent_score = score_from_per_task(parent_rows, len(tasks))
     return {
         "child_score": child_score,
         "parent_score": parent_score,
@@ -341,6 +360,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--provider", choices=sorted(PROVIDERS), default="deepseek")
+    parser.add_argument("--artifact-dir", action="append", help="Repeat for each directory containing sessions and round skills.")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--api-key-env", default="")
     parser.add_argument("--base-url", default="")
@@ -361,7 +381,8 @@ def main() -> None:
     args = parser.parse_args()
 
     levels = {int(x) for x in args.levels.split(",") if x.strip()}
-    pairs = build_pairs(DEFAULT_ARTIFACT_DIRS, levels=levels, seed=args.seed)
+    artifact_dirs = [Path(p).resolve() for p in args.artifact_dir] if args.artifact_dir else DEFAULT_ARTIFACT_DIRS
+    pairs = build_pairs(artifact_dirs, levels=levels, seed=args.seed)
     if args.limit:
         pairs = pairs[: args.limit]
     print(f"[load] sampled {len(pairs)} child-parent pairs for levels={sorted(levels)}")
@@ -371,8 +392,8 @@ def main() -> None:
         print(f"  {domain}: {sum(1 for p in pairs if p.domain == domain)}")
 
     tasks_by_domain = {
-        artifact_dir.parts[-2]: load_tasks(artifact_dir, args.tasks_per_domain, args.seed)
-        for artifact_dir in DEFAULT_ARTIFACT_DIRS
+        artifact_domain(artifact_dir): load_tasks(artifact_dir, args.tasks_per_domain, args.seed)
+        for artifact_dir in artifact_dirs
         if artifact_dir.exists()
     }
     if args.dry_run:

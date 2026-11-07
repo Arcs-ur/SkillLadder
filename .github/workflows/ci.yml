@@ -1,0 +1,70 @@
+name: Offline validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  LITELLM_LOCAL_MODEL_COST_MAP: "True"
+
+jobs:
+  package-and-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install package and checks
+        run: python -m pip install -e ".[dev]" build
+      - name: Run offline regression tests
+        run: python -m pytest -q -p no:cacheprovider
+      - name: Check Python syntax and undefined names
+        run: python -m ruff check --select E9,F src scripts audits tests
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Install and import the built wheel
+        run: |
+          python -m venv --system-site-packages "$RUNNER_TEMP/skillladder-wheel"
+          "$RUNNER_TEMP/skillladder-wheel/bin/python" -m pip install --no-deps dist/*.whl
+          "$RUNNER_TEMP/skillladder-wheel/bin/python" -c \
+            'import pathlib, sys, skillladder, fedskill; from skillladder import Skill, SkillLadderServer; assert pathlib.Path(skillladder.__file__).is_relative_to(sys.prefix); assert pathlib.Path(fedskill.__file__).is_relative_to(sys.prefix); print("Built wheel imports passed")'
+
+  pinned-tau2:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TAU2_ROOT: ${{ github.workspace }}/.tau2-bench
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: sierra-research/tau2-bench
+          ref: 01e812d1d1c4df6d8d2299bf175e482527112244
+          path: .tau2-bench
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install native audio headers required by pinned imports
+        run: sudo apt-get update && sudo apt-get install -y portaudio19-dev
+      - name: Check patch application
+        working-directory: .tau2-bench
+        run: git apply --check "$GITHUB_WORKSPACE/integrations/tau2/fedskill_tau2_integration.patch"
+      - name: Apply integration patch
+        working-directory: .tau2-bench
+        run: git apply "$GITHUB_WORKSPACE/integrations/tau2/fedskill_tau2_integration.patch"
+      - name: Install pinned integration dependencies
+        run: python -m pip install -e ".[dev]" -e "${TAU2_ROOT}[voice,knowledge]"
+      - name: Verify actual agent, selector, logs and task splits offline
+        run: python scripts/check_tau2_integration.py --tau2-root "$TAU2_ROOT"

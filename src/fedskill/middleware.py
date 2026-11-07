@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any, Callable
 
 from fedskill.backends.base import ExecutionBackend, SessionData, TaskSpec
 from fedskill.backends.registry import get_backend
-from fedskill.client.task_client import TaskClient
 from fedskill.models.skill import Skill
 from fedskill.server.aggregator import FedSkillServer
+from fedskill.utils.run_manifest import atomic_write_json, read_json
 
 
 class FedSkillMiddleware:
@@ -51,6 +52,10 @@ class FedSkillMiddleware:
         self.evolved_skills: list[Skill] = []
         self._all_sessions: dict[str, list[SessionData]] = {}
         self._skill_library: dict[str, Skill] = {}  # id -> Skill, for tracking effectiveness
+        self._release_map_path = Path(output_dir) / "private" / "release_id_map.json"
+        self._release_id_map: dict[str, str] = (
+            read_json(self._release_map_path) if self._release_map_path.exists() else {}
+        )
 
     # ------------------------------------------------------------------
     # Step 1: Collect sessions from backends
@@ -282,13 +287,18 @@ class FedSkillMiddleware:
                 if not used_skills:
                     continue
 
+                touched = set()
                 for skill_name in used_skills:
+                    internal_ref = self._release_id_map.get(skill_name, skill_name)
                     # Find the skill in our library
                     matching = [
                         s for s in self._skill_library.values()
-                        if s.name == skill_name or s.id == skill_name
+                        if s.name == internal_ref or s.id == internal_ref
                     ]
                     for skill in matching:
+                        if skill.id in touched:
+                            continue
+                        touched.add(skill.id)
                         skill.record_quality_event(
                             session.score,
                             round_id="middleware_feedback",
@@ -327,7 +337,7 @@ class FedSkillMiddleware:
         """
         from fedskill.utils.privacy import prepare_for_sharing
 
-        skills = skills or self.evolved_skills
+        skills = self.evolved_skills if skills is None else skills
 
         # Apply privacy pipeline: level gate + scrubbing + lineage sanitization
         shared_skills: list[Skill] = []
@@ -339,6 +349,10 @@ class FedSkillMiddleware:
             )
             if sanitized is not None:
                 shared_skills.append(sanitized)
+                self._release_id_map[sanitized.id] = s.id
+                self._skill_library[s.id] = s
+
+        atomic_write_json(self._release_map_path, self._release_id_map)
 
         if progress:
             progress(

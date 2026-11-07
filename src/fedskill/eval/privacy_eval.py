@@ -21,6 +21,71 @@ from pathlib import Path
 from fedskill.models.skill import Skill
 from fedskill.utils.llm import llm_call
 
+
+class LineageError(ValueError):
+    """A source set cannot be recovered from an incomplete or cyclic lineage."""
+
+
+def _source_resolver(skills: list[Skill], *, use_session_ids: bool = False):
+    skill_map = {skill.id: skill for skill in skills}
+    cache: dict[str, frozenset[str]] = {}
+    active: set[str] = set()
+
+    def resolve(skill: Skill) -> set[str]:
+        if skill.id in cache:
+            return set(cache[skill.id])
+        if skill.id in active:
+            raise LineageError(f"Cyclic lineage at skill {skill.id}")
+        active.add(skill.id)
+        try:
+            if skill.level == 0:
+                source = (
+                    skill.source_session_id or skill.source_task
+                    if use_session_ids else skill.source_task
+                )
+                if not source:
+                    raise LineageError(f"Missing source identity for L0 skill {skill.id}")
+                sources = {source}
+            else:
+                if not skill.parent_ids:
+                    raise LineageError(f"Missing parents for skill {skill.id}")
+                sources = set()
+                for parent_id in set(skill.parent_ids):
+                    if parent_id not in skill_map:
+                        raise LineageError(f"Missing parent {parent_id} for skill {skill.id}")
+                    sources.update(resolve(skill_map[parent_id]))
+            cache[skill.id] = frozenset(sources)
+            return sources
+        finally:
+            active.discard(skill.id)
+
+    return resolve
+
+
+def compute_source_mixing(skills: list[Skill]) -> dict[int, dict]:
+    """Count distinct source sessions, marking incomplete levels explicitly."""
+    resolve = _source_resolver(skills, use_session_ids=True)
+    counts: dict[int, list[int]] = defaultdict(list)
+    errors: dict[int, list[str]] = defaultdict(list)
+    for skill in {skill.id: skill for skill in skills}.values():
+        try:
+            counts[skill.level].append(len(resolve(skill)))
+        except LineageError as exc:
+            errors[skill.level].append(str(exc))
+    report = {}
+    for level in sorted(set(counts) | set(errors)):
+        values = counts[level]
+        complete = bool(values) and not errors[level]
+        report[level] = {
+            "min": min(values) if complete else None,
+            "mean": sum(values) / len(values) if complete else None,
+            "max": max(values) if complete else None,
+            "complete": complete,
+            "num_resolved": len(values),
+            "errors": errors[level],
+        }
+    return report
+
 # ---------------------------------------------------------------------------
 # Entity extraction (regex-based)
 # ---------------------------------------------------------------------------
@@ -93,18 +158,7 @@ def compute_entity_retention(
         Dict mapping level -> ERResult.
     """
     # Build lookup: skill_id -> skill
-    skill_map = {s.id: s for s in skills}
-
-    # For each skill, recursively find source traces
-    def get_source_tasks(skill: Skill) -> set[str]:
-        if skill.level == 0 and skill.source_task:
-            return {skill.source_task}
-        sources: set[str] = set()
-        for pid in skill.parent_ids:
-            parent = skill_map.get(pid)
-            if parent:
-                sources |= get_source_tasks(parent)
-        return sources
+    get_source_tasks = _source_resolver(skills)
 
     # Group by level
     by_level: dict[int, list[Skill]] = defaultdict(list)
@@ -194,18 +248,8 @@ def compute_source_attribution(
         Dict mapping level -> SAResult.
     """
     rng = random.Random(seed)
-    skill_map = {s.id: s for s in skills}
+    get_source_tasks = _source_resolver(skills)
     all_task_ids = list(trace_texts.keys())
-
-    def get_source_tasks(skill: Skill) -> set[str]:
-        if skill.level == 0 and skill.source_task:
-            return {skill.source_task}
-        sources: set[str] = set()
-        for pid in skill.parent_ids:
-            parent = skill_map.get(pid)
-            if parent:
-                sources |= get_source_tasks(parent)
-        return sources
 
     by_level: dict[int, list[Skill]] = defaultdict(list)
     for s in skills:
@@ -386,30 +430,7 @@ def run_privacy_evaluation(
     else:
         print("\n[3/3] Skipping SA game (run_sa=False)")
 
-    # --- Mixing degree (measured) ---
-    skill_map = {s.id: s for s in skills}
-
-    def get_source_count(s: Skill) -> int:
-        if s.level == 0:
-            return 1
-        return sum(
-            get_source_count(skill_map[pid])
-            for pid in s.parent_ids
-            if pid in skill_map
-        )
-
-    by_level: dict[int, list[int]] = defaultdict(list)
-    for s in skills:
-        by_level[s.level].append(get_source_count(s))
-
-    mixing_report: dict[int, dict] = {}
-    for level in sorted(by_level):
-        counts = by_level[level]
-        mixing_report[level] = {
-            "min": min(counts),
-            "mean": sum(counts) / len(counts),
-            "max": max(counts),
-        }
+    mixing_report = compute_source_mixing(skills)
 
     # --- Report ---
     report = {
@@ -427,12 +448,12 @@ def run_privacy_evaluation(
     print("=" * 60)
     print(f"Levels evaluated: {sorted(er_results.keys())}")
     print(f"Sieving model: ER(ℓ) ≈ {model['p_ext']:.3f} × {model['p_evo']:.3f}^ℓ  (R²={model['r_squared']:.3f})")
-    for level in sorted(by_level):
+    for level in sorted(mixing_report):
         md = mixing_report[level]
         er_val = er_results.get(level, ERResult(level, 0, 0.0, []))
         sa_val = sa_results_dict.get(level, {})
         print(
-            f"  Level {level}: μ={md['mean']:.1f} (min={md['min']}), "
+            f"  Level {level}: μ={md['mean']} (min={md['min']}), "
             f"ER={er_val.mean_er:.4f}, "
             f"SA={sa_val.get('accuracy', 'N/A')}"
         )

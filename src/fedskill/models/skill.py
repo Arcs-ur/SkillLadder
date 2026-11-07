@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -69,6 +70,9 @@ class Skill:
     retired: bool = False
     retirement_reason: str = ""
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
+    source_session_id: Optional[str] = None
+    reward_ema: Optional[float] = None
+    quality_state_status: str = "uninitialized"
 
     # ------------------------------------------------------------------
     # Feedback helpers
@@ -108,22 +112,26 @@ class Skill:
         downstream use, so future retrieval/evolution can prefer skills that
         are actually helping over time.
         """
+        if not math.isfinite(outcome_score) or not math.isfinite(alpha):
+            raise ValueError("Outcome and EMA alpha must be finite.")
+        if self.reward_ema is None:
+            self.restore_reward_ema()
+        if self.reward_ema is None:
+            raise ValueError(
+                "Legacy runtime quality cannot be migrated exactly; provide complete history "
+                "and explicit legacy_alpha, or start a new quality run."
+            )
         observed = _clamp01(outcome_score)
         previous_quality = self.quality_score
-        if previous_quality <= 0.0:
-            if self.score > 1.0:
-                previous_quality = _clamp01(self.score / 10.0)
-            elif self.score > 0.0:
-                previous_quality = _clamp01(self.score)
-            else:
-                previous_quality = observed
+        previous_ema = self.reward_ema
 
         self.record_injection()
         self.record_feedback(observed)
 
         alpha = _clamp01(alpha)
-        moving_quality = (1.0 - alpha) * previous_quality + alpha * observed
-        self.quality_score = round(0.7 * moving_quality + 0.3 * self.effectiveness, 4)
+        self.reward_ema = (1.0 - alpha) * previous_ema + alpha * observed
+        self.quality_score = round(0.7 * self.reward_ema + 0.3 * self.effectiveness, 4)
+        self.quality_state_status = "observed"
         self.last_quality_update = _utc_now_iso()
         self.quality_history.append(
             {
@@ -133,6 +141,9 @@ class Skill:
                 "task_id": task_id,
                 "outcome_score": observed,
                 "previous_quality": round(previous_quality, 4),
+                "previous_reward_ema": previous_ema,
+                "reward_ema": self.reward_ema,
+                "alpha": alpha,
                 "quality_score": self.quality_score,
                 "effectiveness": round(self.effectiveness, 4),
                 "inject_count": self.inject_count,
@@ -141,6 +152,39 @@ class Skill:
                 "metadata": metadata or {},
             }
         )
+
+    def restore_reward_ema(self, *, legacy_alpha: float | None = None) -> bool:
+        """Replay complete reward history. Unknown historical alpha is not guessed."""
+        if self.reward_ema is not None:
+            return True
+        initial = _clamp01(self.score / 10.0)
+        if self.inject_count == 0:
+            self.reward_ema = initial
+            self.quality_score = initial
+            self.quality_state_status = "initialized"
+            return True
+        events = [e for e in self.quality_history if "outcome_score" in e]
+        if len(events) != self.inject_count:
+            self.quality_state_status = "legacy-incomplete"
+            return False
+        ema = initial
+        for index, event in enumerate(events, 1):
+            alpha = event.get("alpha", legacy_alpha)
+            outcome = event.get("outcome_score")
+            if (
+                event.get("inject_count") != index
+                or not isinstance(alpha, (int, float)) or isinstance(alpha, bool)
+                or not math.isfinite(alpha) or not 0 <= alpha <= 1
+                or not isinstance(outcome, (int, float)) or isinstance(outcome, bool)
+                or not math.isfinite(outcome) or not 0 <= outcome <= 1
+            ):
+                self.quality_state_status = "legacy-incomplete"
+                return False
+            ema = (1 - alpha) * ema + alpha * outcome
+        self.reward_ema = ema
+        self.quality_score = round(0.7 * ema + 0.3 * self.effectiveness, 4)
+        self.quality_state_status = "history-replayed"
+        return True
 
     def retire(self, reason: str) -> None:
         """Mark this skill as inactive for future retrieval/injection."""

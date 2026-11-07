@@ -19,16 +19,19 @@ def _skill_text(s: Skill) -> str:
     return " | ".join(parts)
 
 
-def _simple_embeddings(texts: list[str]) -> np.ndarray:
+def _simple_embeddings(texts: list[str], embedding_model: str = "all-MiniLM-L6-v2",
+                       embedding_revision: str | None = None, strict_embeddings: bool = False) -> np.ndarray:
     """Compute embeddings using sentence-transformers (lazy import).
 
     Falls back to TF-IDF if sentence-transformers is not available.
     """
     try:
         from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+        model = SentenceTransformer(embedding_model, revision=embedding_revision)
         return model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
     except ImportError:
+        if strict_embeddings:
+            raise RuntimeError("Paper clustering requires sentence-transformers; TF-IDF fallback is disabled.")
         # Fallback: TF-IDF vectors
         from sklearn.feature_extraction.text import TfidfVectorizer
         vectorizer = TfidfVectorizer(max_features=512, stop_words="english")
@@ -48,9 +51,15 @@ class EmbeddingClustering(ClusteringStrategy):
             Clusters exceeding this are recursively split.
     """
 
-    def __init__(self, distance_threshold: float = 0.6, max_cluster_size: int = 8):
+    def __init__(self, distance_threshold: float = 0.6, max_cluster_size: int = 8,
+                 embedding_model: str = "all-MiniLM-L6-v2", embedding_revision: str | None = None,
+                 strict_embeddings: bool = False, seed: int = 42):
         self.distance_threshold = distance_threshold
         self.max_cluster_size = max_cluster_size
+        self.embedding_model = embedding_model
+        self.embedding_revision = embedding_revision
+        self.strict_embeddings = strict_embeddings
+        self.seed = seed
 
     def cluster(self, skills: list[Skill]) -> list[list[Skill]]:
         if len(skills) <= 1:
@@ -58,7 +67,7 @@ class EmbeddingClustering(ClusteringStrategy):
 
         # Compute embeddings
         texts = [_skill_text(s) for s in skills]
-        embeddings = _simple_embeddings(texts)
+        embeddings = _simple_embeddings(texts, self.embedding_model, self.embedding_revision, self.strict_embeddings)
 
         # Agglomerative clustering
         from sklearn.cluster import AgglomerativeClustering
@@ -101,7 +110,7 @@ class EmbeddingClustering(ClusteringStrategy):
 
         from sklearn.cluster import KMeans
         n_clusters = max(2, len(skills) // max_size + 1)
-        km = KMeans(n_clusters=n_clusters, n_init=5, random_state=42)
+        km = KMeans(n_clusters=n_clusters, n_init=5, random_state=self.seed)
         labels = km.fit_predict(embeddings)
 
         groups: dict[int, list[int]] = {}
@@ -114,9 +123,11 @@ class EmbeddingClustering(ClusteringStrategy):
             if len(sub_skills) <= max_size:
                 result.append(sub_skills)
             else:
-                result.extend(
-                    self._split(sub_skills, embeddings[indices], max_size)
-                )
+                if len(sub_skills) == len(skills):
+                    # Identical vectors cannot be partitioned by KMeans.
+                    result.extend([sub_skills[i:i + max_size] for i in range(0, len(sub_skills), max_size)])
+                else:
+                    result.extend(self._split(sub_skills, embeddings[indices], max_size))
         return result
 
     def name(self) -> str:

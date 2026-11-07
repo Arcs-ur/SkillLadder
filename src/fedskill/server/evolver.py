@@ -3,9 +3,56 @@
 from __future__ import annotations
 
 import json
+import logging
+import math
 import random
 from fedskill.models.skill import Skill
 from fedskill.utils.llm import llm_call
+
+
+logger = logging.getLogger(__name__)
+
+
+class InvalidJudgeResponse(ValueError):
+    """A model response cannot be used as a valid gate or quality score."""
+
+
+def _json_object(raw: str) -> dict:
+    if not isinstance(raw, str):
+        raise InvalidJudgeResponse("Expected a JSON response string")
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) < 3 or lines[-1].strip() != "```":
+            raise InvalidJudgeResponse("Incomplete fenced JSON response")
+        text = "\n".join(lines[1:-1])
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise InvalidJudgeResponse("Invalid JSON response") from exc
+    if not isinstance(data, dict):
+        raise InvalidJudgeResponse("Expected a JSON object")
+    return data
+
+
+def _candidate_data(raw: str) -> dict:
+    data = _json_object(raw)
+    for name in ("name", "description", "when_to_use", "procedure"):
+        if not isinstance(data.get(name), str) or not data[name].strip():
+            raise InvalidJudgeResponse(f"Candidate requires a non-empty {name}")
+    examples = data.get("examples", [])
+    if not isinstance(examples, list) or any(not isinstance(item, str) for item in examples):
+        raise InvalidJudgeResponse("Candidate examples must be a string list")
+    scripts = data.get("scripts", [])
+    if not isinstance(scripts, list):
+        raise InvalidJudgeResponse("Candidate scripts must be a list")
+    for script in scripts:
+        if not isinstance(script, dict) or any(
+            not isinstance(script.get(name), str)
+            for name in ("name", "language", "code", "description")
+        ):
+            raise InvalidJudgeResponse("Candidate script fields must be strings")
+    return data
 
 
 EVOLVE_SYSTEM = """You are a skill-evolution engine.
@@ -101,6 +148,10 @@ def evolve_skill_cluster(
     disable_consistency: bool = False,
     disable_nondegradation: bool = False,
     disable_critical_step: bool = False,
+    rng: random.Random | None = None,
+    score_gap_ratio: float = SCORE_GAP_RATIO,
+    synthesis_temperature: float = 0.5,
+    gate_temperature: float = 0.2,
 ) -> Skill | None:
     """Merge a cluster of similar skills into one higher-level generalised skill.
 
@@ -133,8 +184,12 @@ def evolve_skill_cluster(
     # output distribution is invariant to member ordering. This makes the
     # symmetric-synthesis assumption a protocol-level guarantee rather than a
     # property we hope the LLM exhibits.
+    if len(skills) < 2:
+        raise ValueError("Synthesis requires at least two parent skills")
+    if max_retries < 0 or not 0 <= score_gap_ratio <= 1:
+        raise ValueError("Invalid retry budget or score-gap ratio")
     skills = list(skills)
-    random.shuffle(skills)
+    (rng or random).shuffle(skills)
 
     # --- Gate 0: Score-gap demotion (Solution B) ---
     # If some members score far below the best, demote them to "context-only"
@@ -142,7 +197,7 @@ def evolve_skill_cluster(
     # as supplementary perspective only.
     parent_max_score = max((s.score for s in skills), default=0.0)
     if not disable_score_gap and parent_max_score > 0:
-        threshold = SCORE_GAP_RATIO * parent_max_score
+        threshold = score_gap_ratio * parent_max_score
         primary = [s for s in skills if s.score >= threshold]
         context_only = [s for s in skills if s.score < threshold]
     else:
@@ -165,26 +220,12 @@ def evolve_skill_cluster(
 
     for attempt in range(1 + max_retries):
         # Generate evolved skill
-        raw = llm_call(prompt, system_prompt=EVOLVE_SYSTEM, temperature=0.5)
-        raw = raw.strip()
-        if raw.startswith("```"):
-            raw = raw.split("\n", 1)[1]
-            raw = raw.rsplit("```", 1)[0]
-
+        raw = llm_call(prompt, system_prompt=EVOLVE_SYSTEM, temperature=synthesis_temperature)
         try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            if attempt < max_retries:
-                continue  # Retry
-            # Final fallback
-            data = {
-                "name": "Merged: " + " + ".join(s.name for s in skills),
-                "description": " | ".join(s.description[:80] for s in skills),
-                "when_to_use": skills[0].when_to_use,
-                "procedure": skills[0].procedure,
-                "examples": [],
-                "scripts": [],
-            }
+            data = _candidate_data(raw)
+        except InvalidJudgeResponse as exc:
+            logger.warning("Synthesis attempt %d rejected: %s", attempt + 1, exc)
+            continue
 
         evolved = Skill(
             name=data.get("name", "Evolved Skill"),
@@ -199,7 +240,9 @@ def evolve_skill_cluster(
         )
 
         # Quality gate 1: Consistency check
-        if not disable_consistency and not _check_consistency(evolved, skills):
+        if not disable_consistency and not _check_consistency(
+            evolved, skills, temperature=gate_temperature
+        ):
             if attempt < max_retries:
                 continue  # Retry
             else:
@@ -207,7 +250,13 @@ def evolve_skill_cluster(
 
         # Quality gate 2: Score evaluation
         if task_descriptions:
-            evolved.score = evaluate_skill(evolved, task_descriptions)
+            try:
+                evolved.score = evaluate_skill(
+                    evolved, task_descriptions, temperature=gate_temperature
+                )
+            except InvalidJudgeResponse as exc:
+                logger.warning("Score gate attempt %d rejected: %s", attempt + 1, exc)
+                continue
 
             # Gate 2a: Minimum score
             if evolved.score < min_score and attempt < max_retries:
@@ -223,7 +272,9 @@ def evolve_skill_cluster(
 
         # Quality gate 4: Critical-step preservation (Solution C)
         # Verify evolved skill retains key steps from the best parent
-        if not disable_critical_step and not _check_step_preservation(evolved, best_parent):
+        if not disable_critical_step and not _check_step_preservation(
+            evolved, best_parent, temperature=gate_temperature
+        ):
             if attempt < max_retries:
                 continue  # Retry
             else:
@@ -234,7 +285,9 @@ def evolve_skill_cluster(
     return None  # All retries exhausted without passing quality gates
 
 
-def _check_consistency(evolved: Skill, originals: list[Skill]) -> bool:
+def _check_consistency(
+    evolved: Skill, originals: list[Skill], *, temperature: float = 0.2
+) -> bool:
     """Verify evolved skill is consistent with its source skills."""
     originals_summary = "\n".join(
         f"- {s.name}: {s.description[:100]}" for s in originals
@@ -244,20 +297,20 @@ def _check_consistency(evolved: Skill, originals: list[Skill]) -> bool:
         f"### Original Skills\n{originals_summary}"
     )
 
-    raw = llm_call(prompt, system_prompt=CONSISTENCY_SYSTEM, temperature=0.2)
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
-
+    raw = llm_call(prompt, system_prompt=CONSISTENCY_SYSTEM, temperature=temperature)
     try:
-        result = json.loads(raw)
-        return bool(result.get("consistent", True))
-    except json.JSONDecodeError:
-        return True  # Assume consistent if parsing fails
+        result = _json_object(raw)
+        if type(result.get("consistent")) is not bool:
+            raise InvalidJudgeResponse("Consistency verdict must be a boolean")
+        return result["consistent"]
+    except InvalidJudgeResponse as exc:
+        logger.warning("Consistency check rejected: %s", exc)
+        return False
 
 
-def _check_step_preservation(evolved: Skill, best_parent: Skill) -> bool:
+def _check_step_preservation(
+    evolved: Skill, best_parent: Skill, *, temperature: float = 0.2
+) -> bool:
     """Verify evolved skill retains critical procedural steps from the best parent.
 
     Gate 4 (Solution C): After synthesis, compare the evolved skill against the
@@ -276,20 +329,20 @@ def _check_step_preservation(evolved: Skill, best_parent: Skill) -> bool:
         f"### Best Parent Skill (score={best_parent.score:.2f})\n{best_parent.to_json()}"
     )
 
-    raw = llm_call(prompt, system_prompt=STEP_PRESERVATION_SYSTEM, temperature=0.2)
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
-
+    raw = llm_call(prompt, system_prompt=STEP_PRESERVATION_SYSTEM, temperature=temperature)
     try:
-        result = json.loads(raw)
-        return bool(result.get("preserved", True))
-    except json.JSONDecodeError:
-        return True  # Assume preserved if parsing fails
+        result = _json_object(raw)
+        if type(result.get("preserved")) is not bool:
+            raise InvalidJudgeResponse("Step-preservation verdict must be a boolean")
+        return result["preserved"]
+    except InvalidJudgeResponse as exc:
+        logger.warning("Step-preservation check rejected: %s", exc)
+        return False
 
 
-def evaluate_skill(skill: Skill, task_descriptions: list[str]) -> float:
+def evaluate_skill(
+    skill: Skill, task_descriptions: list[str], *, temperature: float = 0.2
+) -> float:
     """Evaluate a skill's generalizability across multiple task descriptions.
 
     Scores the skill on two dimensions per task:
@@ -310,36 +363,24 @@ def evaluate_skill(skill: Skill, task_descriptions: list[str]) -> float:
     tasks_text = "\n".join(f"{i+1}. {desc}" for i, desc in enumerate(task_descriptions))
     prompt = SCORE_USER.format(skill_json=skill.to_json(), tasks_text=tasks_text)
 
-    raw = llm_call(prompt, system_prompt=SCORE_SYSTEM, temperature=0.2)
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
-
-    try:
-        result = json.loads(raw)
-        per_task = result.get("per_task", [])
-        if not per_task:
-            # Fallback to old format
-            scores = result.get("scores", [])
-            if scores:
-                return sum(scores) / len(scores)
-            return float(result.get("avg", 0))
-
-        # Compute generalizability = coverage × mean_relevance_of_covered
-        applicable = [
-            t for t in per_task
-            if t.get("applicability", 0) >= APPLICABILITY_THRESHOLD
-        ]
-        coverage = len(applicable) / len(per_task) if per_task else 0.0
-
-        if not applicable:
-            return 0.0
-
-        mean_relevance = sum(t.get("relevance", 0) for t in applicable) / len(applicable)
-        generalizability = coverage * mean_relevance
-
-        return round(generalizability, 2)
-
-    except (json.JSONDecodeError, ValueError):
-        return 0.0
+    raw = llm_call(prompt, system_prompt=SCORE_SYSTEM, temperature=temperature)
+    result = _json_object(raw)
+    per_task = result.get("per_task")
+    if not isinstance(per_task, list) or len(per_task) != len(task_descriptions):
+        raise InvalidJudgeResponse("Score response must contain exactly one item per task")
+    for item in per_task:
+        if not isinstance(item, dict):
+            raise InvalidJudgeResponse("Each task score must be an object")
+        for name in ("relevance", "applicability"):
+            value = item.get(name)
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value)
+                or not 0 <= value <= 10
+            ):
+                raise InvalidJudgeResponse(f"{name} must be a finite number in [0, 10]")
+    applicable = [
+        item for item in per_task if item["applicability"] >= APPLICABILITY_THRESHOLD
+    ]
+    # Algebraically identical to coverage times mean covered-task relevance.
+    return round(sum(item["relevance"] for item in applicable) / len(task_descriptions), 2)

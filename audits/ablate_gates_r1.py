@@ -1,7 +1,7 @@
 """Gate-level ablation on airline-50 R1.
 
-Re-runs cluster-level synthesis for every cluster that the full pipeline
-accepted in airline R1, under four flag combos:
+Re-runs cluster-level synthesis for every original multi-skill candidate
+cluster in airline R1, under four flag combos:
     full           : all 4 gates on (control)
     no_consistency : Gate 1 off
     no_nondegrad   : Gate 3 off
@@ -28,6 +28,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from fedskill.models.skill import Skill
 from fedskill.server.evolver import evolve_skill_cluster  # noqa: E402
+from fedskill.utils.run_manifest import cluster_identity, atomic_write_json, PROTOCOL_VERSION
 
 ARTIFACT_DIR = REPO_ROOT / "output" / "tau2_airline_train50" / "skills_from_train"
 OUT_DIR = REPO_ROOT / "output" / "gate_ablation_airline_r1"
@@ -35,57 +36,17 @@ OUT_DIR = REPO_ROOT / "output" / "gate_ablation_airline_r1"
 
 def _skill_from_dict(d: dict) -> Skill:
     # Skill is a dataclass; construct from compatible kwargs.
-    valid_fields = {
-        "name", "description", "when_to_use", "procedure", "examples", "scripts",
-        "category", "source_task", "level", "parent_ids", "score", "inject_count",
-        "positive_count", "negative_count", "effectiveness", "version",
-        "quality_score", "quality_history", "last_quality_update", "retired",
-        "retirement_reason", "id",
-    }
-    kwargs = {k: v for k, v in d.items() if k in valid_fields}
-    return Skill(**kwargs)
+    return Skill.from_dict(d)
 
 
 def load_clusters_from_artifact() -> tuple[list[list[Skill]], list[str]]:
-    """Return (list of clusters, list of cluster_ids).
-
-    Each cluster = list of L0 parent Skill objects, reconstructed from the
-    parent_ids of every L1 skill in round1_skills.json. L0 skills are loaded
-    from level0_all.json (round1_skills only contains the carried-forward
-    subset, plus the newly synthesized L1 skills).
-    """
-    l0_path = ARTIFACT_DIR / "level0_all.json"
-    with l0_path.open("r", encoding="utf-8") as f:
-        l0_list = json.load(f)
-    id_to_skill: dict[str, Skill] = {}
-    for d in l0_list:
-        sk = _skill_from_dict(d)
-        id_to_skill[sk.id] = sk
-
-    r1_path = ARTIFACT_DIR / "round1_skills.json"
-    with r1_path.open("r", encoding="utf-8") as f:
-        round1 = json.load(f)
-    # Also add any L0 carried-forward in round1_skills (rare overlap, safe to merge).
-    for d in round1:
-        if int(d.get("level") or 0) == 0:
-            sk = _skill_from_dict(d)
-            id_to_skill.setdefault(sk.id, sk)
-
-    clusters: list[list[Skill]] = []
-    ids: list[str] = []
-    for d in round1:
-        if int(d.get("level") or 0) != 1:
-            continue
-        parents = []
-        for pid in (d.get("parent_ids") or []):
-            sk = id_to_skill.get(pid)
-            if sk is None:
-                continue
-            parents.append(sk)
-        if len(parents) >= 2:
-            clusters.append(parents)
-            ids.append(d.get("id") or f"unknown_{len(ids)}")
-    return clusters, ids
+    """Load the fixed candidate population, including originally rejected clusters."""
+    with (ARTIFACT_DIR / "round1_clusters.json").open(encoding="utf-8") as stream:
+        data = json.load(stream)
+    if not isinstance(data, list) or any(not isinstance(cluster, list) for cluster in data):
+        raise ValueError("round1_clusters.json must be a list of candidate clusters")
+    clusters = [[Skill.from_dict(item) for item in cluster] for cluster in data if len(cluster) >= 2]
+    return clusters, [cluster_identity(cluster) for cluster in clusters]
 
 
 def load_task_descriptions() -> list[str]:
@@ -122,6 +83,12 @@ def run(limit: int | None = None, sleep_s: float = 0.0) -> None:
     # subsample task descs to control cost: per Step 2 scoring call uses ALL tasks
     # in the prompt, so trim to 10 representative descriptions.
     task_descs = task_descs[:10]
+    atomic_write_json(OUT_DIR / "protocol.json", {
+        "protocol": PROTOCOL_VERSION,
+        "candidate_ids": cluster_ids,
+        "task_descriptions": task_descs,
+        "conditions": CONDITIONS,
+    })
     print(f"[scoring] using first {len(task_descs)} task descriptions for judge", flush=True)
 
     csv_path = OUT_DIR / "per_cluster.csv"

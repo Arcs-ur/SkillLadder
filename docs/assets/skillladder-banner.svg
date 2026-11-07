@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="336" viewBox="0 0 1200 336" role="img" aria-labelledby="title description">
+  <title id="title">SkillLadder: from local experience to shared skills</title>
+  <desc id="description">An original vector banner with a four-step ladder from local L0 skills to increasingly general L1, L2 and L3 skills. Publication, Python and license badges describe this repository.</desc>
+  <!-- Original repository artwork. All text and geometry remain editable. -->
+  <defs>
+    <pattern id="dots" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#dce5dc"/>
+    </pattern>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8f8f2"/>
+      <stop offset="1" stop-color="#eef4ed"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="1198" height="334" rx="24" fill="url(#paper)" stroke="#dbe5dc"/>
+  <rect x="618" y="24" width="552" height="284" rx="18" fill="url(#dots)"/>
+  <g font-family="Times New Roman, Times, serif">
+    <text x="52" y="84" fill="#376a5e" font-size="20">Multi-user skill evolution</text>
+    <text x="52" y="147" fill="#173f38" font-size="51" font-weight="bold">From local experience</text>
+    <text x="52" y="205" fill="#173f38" font-size="51" font-weight="bold">to shared skills.</text>
+    <text x="54" y="241" fill="#5c6e64" font-size="21">Extract. Evolve. Sanitize. Reuse.</text>
+
+    <g transform="translate(52 273)">
+      <rect width="219" height="32" rx="16" fill="#173f38"/>
+      <text x="109.5" y="22" fill="#ffffff" text-anchor="middle" font-size="17">Findings of EMNLP 2026</text>
+      <rect x="231" width="126" height="32" rx="16" fill="#e3ece3" stroke="#c8d8ca"/>
+      <text x="294" y="22" fill="#244e42" text-anchor="middle" font-size="17">Python 3.12</text>
+      <rect x="369" width="140" height="32" rx="16" fill="#e3ece3" stroke="#c8d8ca"/>
+      <text x="439" y="22" fill="#244e42" text-anchor="middle" font-size="17">Apache 2.0</text>
+    </g>
+
+    <path d="M668 283 H776 V239 H888 V189 H1000 V134 H1124" fill="none" stroke="#bacbbc" stroke-width="3" stroke-linejoin="round"/>
+    <g transform="translate(668 202)">
+      <rect width="94" height="76" rx="12" fill="#e0e8df" stroke="#bdcdbf"/>
+      <text x="47" y="36" fill="#3f594a" text-anchor="middle" font-size="31" font-weight="bold">L0</text>
+      <text x="47" y="61" fill="#4f6757" text-anchor="middle" font-size="17">Local</text>
+    </g>
+    <g transform="translate(780 158)">
+      <rect width="94" height="76" rx="12" fill="#b7d9ca" stroke="#8ab7a5"/>
+      <text x="47" y="36" fill="#204f40" text-anchor="middle" font-size="31" font-weight="bold">L1</text>
+      <text x="47" y="61" fill="#285a46" text-anchor="middle" font-size="17">Synthesize</text>
+    </g>
+    <g transform="translate(892 108)">
+      <rect width="94" height="76" rx="12" fill="#e5cf9e" stroke="#ceb275"/>
+      <text x="47" y="36" fill="#634b24" text-anchor="middle" font-size="31" font-weight="bold">L2</text>
+      <text x="47" y="61" fill="#70552a" text-anchor="middle" font-size="17">Abstract</text>
+    </g>
+    <g transform="translate(1004 53)">
+      <rect width="112" height="76" rx="12" fill="#245d4c"/>
+      <text x="56" y="36" fill="#ffffff" text-anchor="middle" font-size="31" font-weight="bold">L3</text>
+      <text x="56" y="61" fill="#d9ebe0" text-anchor="middle" font-size="17">Generalize</text>
+    </g>
+    <text x="897" y="310" fill="#4e6a58" text-anchor="middle" font-size="18">A ladder of reusable procedural knowledge</text>
+  </g>
+</svg>

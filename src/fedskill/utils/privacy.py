@@ -8,6 +8,7 @@ Implements the three privacy mechanisms from §3.7:
 from __future__ import annotations
 
 import re
+import uuid
 from copy import deepcopy
 from collections.abc import Callable, Iterable
 
@@ -170,30 +171,42 @@ def scrub_skill(
     s.when_to_use = _scrub_text(s.when_to_use, blocklist, entity_detector)
     s.procedure = _scrub_text(s.procedure, blocklist, entity_detector)
     s.examples = [_scrub_text(ex, blocklist, entity_detector) for ex in s.examples]
-    for script in s.scripts:
-        if "code" in script:
-            script["code"] = _scrub_text(script["code"], blocklist, entity_detector)
-        if "description" in script:
-            script["description"] = _scrub_text(
-                script["description"], blocklist, entity_detector
-            )
+    s.category = _scrub_text(s.category, blocklist, entity_detector)
+    s.scripts = [
+        {
+            key: _scrub_text(value, blocklist, entity_detector)
+            for key, value in script.items()
+            if key in {"name", "language", "code", "description"} and isinstance(value, str)
+        }
+        for script in s.scripts
+    ]
     return s
 
 
-def sanitize_lineage(skill: Skill) -> Skill:
+def sanitize_lineage(skill: Skill, *, release_id: str | None = None) -> Skill:
     """Strip provenance metadata from a skill before sharing.
 
     Removes source_task, parent_ids, and resets tracking counters
     so the receiving backend cannot trace the skill's origin.
     """
-    s = deepcopy(skill)
-    s.source_task = None
-    s.parent_ids = []
-    s.inject_count = 0
-    s.positive_count = 0
-    s.negative_count = 0
-    s.effectiveness = 0.0
-    return s
+    # Construct from an allowlist so new internal metadata fields are not
+    # inadvertently exported in a later schema revision.
+    return Skill(
+        name=skill.name,
+        description=skill.description,
+        when_to_use=skill.when_to_use,
+        procedure=skill.procedure,
+        examples=deepcopy(skill.examples),
+        scripts=deepcopy(skill.scripts),
+        category=skill.category,
+        level=skill.level,
+        score=skill.score,
+        quality_score=skill.quality_score,
+        quality_state_status="observed" if skill.reward_ema is not None or skill.inject_count else "uninitialized",
+        version=skill.version,
+        retired=skill.retired,
+        id=release_id or uuid.uuid4().hex,
+    )
 
 
 def prepare_for_sharing(
@@ -201,6 +214,8 @@ def prepare_for_sharing(
     blocklist: set[str] | None = None,
     min_level: int = 1,
     entity_detector: EntityDetector | None = None,
+    *,
+    release_id: str | None = None,
 ) -> Skill | None:
     """Full privacy pipeline: check level → scrub entities → sanitize lineage.
 
@@ -210,5 +225,5 @@ def prepare_for_sharing(
     if skill.level < min_level:
         return None
     scrubbed = scrub_skill(skill, blocklist, entity_detector)
-    sanitized = sanitize_lineage(scrubbed)
+    sanitized = sanitize_lineage(scrubbed, release_id=release_id)
     return sanitized

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from fedskill.clustering.base import ClusteringStrategy
-from fedskill.clustering.embedding_clustering import EmbeddingClustering, _skill_text
+from fedskill.clustering.embedding_clustering import EmbeddingClustering
 from fedskill.models.skill import Skill
 from fedskill.utils.llm import llm_call
 
@@ -50,12 +50,16 @@ class ReverseHybridClustering(ClusteringStrategy):
         max_cluster_size: Maximum skills per cluster (default: 8).
     """
 
-    def __init__(self, distance_threshold: float = 0.5, max_cluster_size: int = 8):
+    def __init__(self, distance_threshold: float = 0.5, max_cluster_size: int = 8,
+                 embedding_model: str = "all-MiniLM-L6-v2", embedding_revision: str | None = None,
+                 strict_embeddings: bool = False, seed: int = 42):
         self.distance_threshold = distance_threshold
         self.max_cluster_size = max_cluster_size
         self._embedding_clusterer = EmbeddingClustering(
             distance_threshold=distance_threshold,
             max_cluster_size=max_cluster_size,
+            embedding_model=embedding_model, embedding_revision=embedding_revision,
+            strict_embeddings=strict_embeddings, seed=seed,
         )
 
     def cluster(self, skills: list[Skill]) -> list[list[Skill]]:

@@ -35,7 +35,6 @@ import os
 import random
 import re
 import statistics
-import sys
 import time
 from collections import Counter
 from dataclasses import dataclass

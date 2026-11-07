@@ -110,6 +110,8 @@ def extract_skills(
     task_description: str,
     traces: list[str],
     outcome: str = "unknown",
+    *,
+    temperature: float = 0.4,
 ) -> list[Skill]:
     """Extract skills from execution traces of a single task/client.
 
@@ -142,7 +144,7 @@ def extract_skills(
     else:
         system_prompt = EXTRACT_SYSTEM
 
-    raw = llm_call(prompt, system_prompt=system_prompt, temperature=0.4)
+    raw = llm_call(prompt, system_prompt=system_prompt, temperature=temperature)
 
     # Parse the JSON array from LLM output
     # Handle potential markdown code fences

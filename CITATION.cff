@@ -3,7 +3,6 @@ message: "If you use SkillLadder, please cite the EMNLP 2026 Findings paper."
 title: "SkillLadder: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis"
 type: software
 version: 1.0.0
-date-released: 2026-08-24
 repository-code: "https://github.com/Arcs-ur/SkillLadder"
 license: Apache-2.0
 authors:
@@ -29,4 +28,16 @@ preferred-citation:
       given-names: Haoyi
   conference:
     name: "Findings of the Association for Computational Linguistics: EMNLP 2026"
+  collection-title: "Findings of the Association for Computational Linguistics: EMNLP 2026"
+  publisher:
+    name: "Association for Computational Linguistics"
   year: 2026
+  month: 10
+  start: 4553
+  end: 4573
+  doi: "10.18653/2026.findings-emnlp.218"
+  url: "https://aclanthology.org/2026.findings-emnlp.218/"
+  identifiers:
+    - type: other
+      value: "2026.findings-emnlp.218"
+      description: "ACL Anthology ID"

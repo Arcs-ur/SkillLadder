@@ -61,3 +61,75 @@ def test_external_entity_detector_is_pluggable() -> None:
         entity_detector=lambda text: [(9, 17, "PROJECT")] if text == "internal codename" else [],
     )
     assert scrubbed.description == "internal [PROJECT]"
+
+
+def test_prepare_for_sharing_removes_runtime_provenance() -> None:
+    """[defect-probing] 分享快照不能保留来源历史与内部标识。"""
+    skill = _skill(
+        id="internal-origin",
+        level=1,
+        source_task="private-task",
+        parent_ids=["private-parent"],
+        quality_history=[{"task_id": "private-task", "metadata": {"origin": "private-origin"}}],
+        last_quality_update="private-timestamp",
+        retirement_reason="private-source",
+        inject_count=7,
+        positive_count=4,
+    )
+    released = prepare_for_sharing(skill)
+    assert released is not None
+    payload = released.to_json(include_runtime=True)
+    assert "private-" not in payload
+    assert "internal-origin" not in payload
+    assert released.quality_history == []
+    assert released.inject_count == 0
+    assert skill.id == "internal-origin"
+    assert skill.quality_history[0]["task_id"] == "private-task"
+
+
+def test_prepare_for_sharing_scrubs_all_public_text_fields() -> None:
+    """[defect-probing] 文件名与分类同样属于共享内容。"""
+    skill = _skill(
+        level=2,
+        category="team@private.example",
+        scripts=[{
+            "name": "person@private.example.py",
+            "language": "python",
+            "code": "pass",
+            "description": "Reusable code",
+            "source_backend": "private-backend",
+        }],
+    )
+    released = prepare_for_sharing(skill)
+    assert released is not None
+    assert "private.example" not in released.category
+    assert "private.example" not in released.scripts[0]["name"]
+    assert "source_backend" not in released.scripts[0]
+
+
+def test_middleware_maps_recipient_feedback_to_internal_skill(tmp_path) -> None:
+    from unittest.mock import Mock
+
+    from fedskill.backends.base import ExecutionBackend, SessionData
+    from fedskill.middleware import FedSkillMiddleware
+
+    middleware = FedSkillMiddleware([], output_dir=str(tmp_path))
+    backend = Mock(spec=ExecutionBackend)
+    backend.name = "receiver"
+    backend.inject_skills.return_value = True
+    middleware.backends = [backend]
+    skill = _skill(level=1, id="internal-skill", source_task="private-task")
+
+    assert middleware.distribute_skills([skill]) == {"receiver": True}
+    payload = backend.inject_skills.call_args.args[0]
+    release_id = payload[0]["id"]
+    assert release_id != skill.id
+    assert payload[0]["source_task"] is None
+    assert middleware._release_map_path.exists()
+
+    middleware.update_effectiveness({
+        "receiver": [SessionData(task_id="next-task", score=1.0,
+                                 skills_used=[release_id, release_id])],
+    })
+    assert skill.inject_count == 1
+    assert skill.positive_count == 1

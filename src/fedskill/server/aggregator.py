@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-import json
+import random
+from pathlib import Path
 from fedskill.models.skill import Skill
 from fedskill.server.evolver import evolve_skill_cluster, evaluate_skill
 from fedskill.clustering import get_clustering_strategy, ClusteringStrategy
+from fedskill.utils.run_manifest import (
+    atomic_write_json, cluster_identity, fingerprint, read_json,
+)
 
 
 class FedSkillServer:
@@ -68,6 +72,8 @@ class FedSkillServer:
                disable_consistency: bool = False,
                disable_nondegradation: bool = False,
                disable_critical_step: bool = False,
+               seed: int = 42,
+               **evolution_kwargs,
                ) -> list[Skill]:
         """Evolve each multi-skill cluster into a generalised skill.
 
@@ -83,18 +89,30 @@ class FedSkillServer:
             disable_nondegradation: Skip gate 3.
             disable_critical_step: Skip gate 4.
         """
-        import json as _json
-        from pathlib import Path as _Path
-
         evolved: list[Skill] = []
         start_idx = 0
+        cluster_ids = [cluster_identity(cluster) for cluster in clusters]
+        if len(cluster_ids) != len(set(cluster_ids)):
+            raise ValueError("Duplicate cluster identity; checkpoint cannot identify work uniquely.")
+        identity = fingerprint({
+            "clusters": [[s.to_dict() for s in c] for c in clusters],
+            "tasks": task_descriptions, "seed": seed, "min_cluster_size": self.min_cluster_size,
+            "gates": [disable_score_gap, disable_consistency, disable_nondegradation, disable_critical_step],
+            "evolution": evolution_kwargs,
+        })
 
         # Resume from checkpoint if exists
-        if checkpoint_path and _Path(checkpoint_path).exists():
-            with open(checkpoint_path, encoding="utf-8") as f:
-                saved = _json.load(f)
-            evolved = [Skill.from_dict(d) for d in saved.get("skills", [])]
-            start_idx = saved.get("next_cluster", 0)
+        if checkpoint_path and Path(checkpoint_path).exists():
+            saved = read_json(checkpoint_path)
+            start_idx = saved.get("next_cluster")
+            if (
+                saved.get("fingerprint") != identity
+                or type(start_idx) is not int or not 0 <= start_idx <= len(clusters)
+                or saved.get("completed_cluster_ids") != cluster_ids[:start_idx]
+                or not isinstance(saved.get("skills"), list)
+            ):
+                raise ValueError(f"Invalid or mismatched checkpoint {checkpoint_path}; use a new output directory.")
+            evolved = [Skill.from_dict(d) for d in saved["skills"]]
             print(f"    [evolve] Resuming from cluster {start_idx}/{len(clusters)} "
                   f"({len(evolved)} skills so far)")
 
@@ -110,6 +128,8 @@ class FedSkillServer:
                     disable_consistency=disable_consistency,
                     disable_nondegradation=disable_nondegradation,
                     disable_critical_step=disable_critical_step,
+                    rng=random.Random(f"{seed}:{cluster_ids[i]}"),
+                    **evolution_kwargs,
                 )
                 if skill is not None:
                     evolved.append(skill)
@@ -122,12 +142,13 @@ class FedSkillServer:
 
             # Save checkpoint after each cluster
             if checkpoint_path:
-                with open(checkpoint_path, "w", encoding="utf-8") as f:
-                    _json.dump({
+                atomic_write_json(checkpoint_path, {
+                        "fingerprint": identity,
+                        "completed_cluster_ids": cluster_ids[:i + 1],
                         "next_cluster": i + 1,
                         "total_clusters": len(clusters),
                         "skills": [sk.to_dict() for sk in evolved],
-                    }, f, ensure_ascii=False)
+                    })
 
         self.evolved_skills = evolved
         return evolved

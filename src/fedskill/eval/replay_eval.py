@@ -13,7 +13,6 @@ Metrics:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field, asdict
 from fedskill.models.skill import Skill
 from fedskill.eval.agent_runner import run_agent, AgentResult

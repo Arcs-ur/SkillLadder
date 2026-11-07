@@ -8,6 +8,7 @@ quality signals from later task executions.
 from __future__ import annotations
 
 import json
+import warnings
 import os
 import tempfile
 from collections import Counter, defaultdict
@@ -16,6 +17,11 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from fedskill.models.skill import Skill
+from fedskill.utils.results import reward_value
+
+
+class AmbiguousFeedbackError(ValueError):
+    """Selection logs cannot be uniquely linked to a simulation."""
 
 
 @dataclass
@@ -58,6 +64,7 @@ def apply_feedback_events(
     missing_refs: Counter[str] = Counter()
     touched_ids: set[str] = set()
     applied_events = 0
+    unmigratable = set()
 
     materialized_events = [
         event if isinstance(event, SkillFeedbackEvent) else SkillFeedbackEvent.from_mapping(event)
@@ -66,10 +73,17 @@ def apply_feedback_events(
 
     for event in materialized_events:
         unique_refs = {ref for ref in event.skill_refs if ref}
+        seen_ids = set()
         for ref in unique_refs:
             skill = by_ref.get(ref)
             if skill is None:
                 missing_refs[ref] += 1
+                continue
+            if skill.id in seen_ids:
+                continue
+            seen_ids.add(skill.id)
+            if not skill.restore_reward_ema():
+                unmigratable.add(skill.id)
                 continue
             skill.record_quality_event(
                 event.score,
@@ -84,7 +98,7 @@ def apply_feedback_events(
 
     retired = []
     for skill in skills:
-        if skill.retired:
+        if skill.retired or skill.id in unmigratable:
             continue
         if skill.inject_count < retire_min_injections:
             continue
@@ -133,6 +147,7 @@ def apply_feedback_events(
         "applied_skill_events": applied_events,
         "touched_skills": len(touched_ids),
         "missing_skill_refs": dict(missing_refs.most_common(20)),
+        "unmigratable_skill_ids": sorted(unmigratable),
         "retired_skills": retired,
         "avg_active_quality": round(sum(quality_values) / len(quality_values), 4) if quality_values else 0.0,
         "top_quality_skills": active_quality[:10],
@@ -150,8 +165,15 @@ def feedback_events_from_tau2_dynamic_log(
     round_id: str = "",
 ) -> list[SkillFeedbackEvent]:
     """Build per-task skill feedback events from tau2 dynamic librarian logs."""
-    task_scores = _tau2_scores_by_task(results_path)
-    usage_by_task: dict[str, set[str]] = defaultdict(set)
+    data = _read_json(results_path) or {}
+    scores = _tau2_scores_from_data(data)
+    by_task: dict[str, list[str]] = defaultdict(list)
+    by_id = {}
+    for key, value in scores.items():
+        by_task[value["task_id"]].append(key)
+        if value.get("simulation_id"):
+            by_id[value["simulation_id"]] = key
+    usage_by_sim: dict[str, set[str]] = defaultdict(set)
     path = Path(consultation_log_path)
     if not path.exists():
         return []
@@ -164,23 +186,39 @@ def feedback_events_from_tau2_dynamic_log(
             task_id = str(item.get("task_id") or "")
             if not task_id:
                 continue
+            sim_id = item.get("simulation_id")
+            trial = item.get("trial")
+            if sim_id:
+                key = by_id.get(str(sim_id))
+            elif trial is not None:
+                keys = [k for k in by_task[task_id] if scores[k].get("trial") == trial]
+                key = keys[0] if len(keys) == 1 else None
+            else:
+                keys = by_task[task_id]
+                if len(keys) > 1:
+                    raise AmbiguousFeedbackError(
+                        f"Task {task_id} has multiple trials but its selection log has no simulation_id/trial."
+                    )
+                key = keys[0] if keys else None
+            if key is None:
+                raise AmbiguousFeedbackError(f"Selection log cannot be joined uniquely for task {task_id}.")
             for skill in item.get("selected_skills") or []:
                 skill_ref = _skill_ref(skill)
                 if skill_ref:
-                    usage_by_task[task_id].add(skill_ref)
+                    usage_by_sim[key].add(skill_ref)
 
     events: list[SkillFeedbackEvent] = []
-    for task_id, refs in usage_by_task.items():
-        if task_id not in task_scores or not refs:
+    for key, refs in usage_by_sim.items():
+        if not refs:
             continue
         events.append(
             SkillFeedbackEvent(
                 skill_refs=sorted(refs),
-                score=task_scores[task_id]["score"],
-                task_id=task_id,
+                score=scores[key]["score"],
+                task_id=scores[key]["task_id"],
                 round_id=round_id,
                 source=source,
-                metadata={"termination_reason": task_scores[task_id].get("termination_reason")},
+                metadata=scores[key],
             )
         )
     return events
@@ -193,8 +231,13 @@ def feedback_events_from_tau2_static_selection(
     max_skills: int,
     source: str = "tau2_static_reinject",
     round_id: str = "",
+    selection_log_path: str | Path | None = None,
 ) -> list[SkillFeedbackEvent]:
-    """Approximate static skill use by reproducing tau2's pre-task selector."""
+    """Use actual selection logs; legacy single-trial files can be reconstructed."""
+    if selection_log_path is not None:
+        return feedback_events_from_tau2_dynamic_log(
+            results_path, selection_log_path, source=source, round_id=round_id,
+        )
     data = _read_json(results_path)
     if not data:
         return []
@@ -202,7 +245,11 @@ def feedback_events_from_tau2_static_selection(
     task_scores = _tau2_scores_from_data(data)
     events = []
 
-    for task_id, score_info in task_scores.items():
+    if len({s["task_id"] for s in task_scores.values()}) != len(task_scores):
+        raise AmbiguousFeedbackError("Multi-trial static feedback requires actual selection logs.")
+    warnings.warn("Reconstructing legacy static selection; use selection_log_path for actual usage.", stacklevel=2)
+    for score_info in task_scores.values():
+        task_id = score_info["task_id"]
         task = tasks_by_id.get(task_id) or {"id": task_id}
         refs = [skill.id for skill in select_static_skills_for_task(skills, task, max_skills=max_skills)]
         if not refs:
@@ -214,7 +261,7 @@ def feedback_events_from_tau2_static_selection(
                 task_id=task_id,
                 round_id=round_id,
                 source=source,
-                metadata={"termination_reason": score_info.get("termination_reason")},
+                metadata={**score_info, "selection_source": "legacy_reconstruction"},
             )
         )
     return events
@@ -272,13 +319,12 @@ def _skill_ref(skill: Mapping[str, Any]) -> str:
 
 
 def _quality_metric(skill: Skill) -> float:
-    if skill.quality_score > 0.0:
+    if (skill.reward_ema is not None or skill.inject_count > 0 or skill.quality_score > 0
+            or skill.quality_state_status == "observed"):
         return max(0.0, min(1.0, skill.quality_score))
     if skill.effectiveness > 0.0:
         return max(0.0, min(1.0, skill.effectiveness))
-    if skill.score > 1.0:
-        return max(0.0, min(1.0, skill.score / 10.0))
-    return max(0.0, min(1.0, skill.score))
+    return max(0.0, min(1.0, skill.score / 10.0))
 
 
 def _skill_text(skill: Skill) -> str:
@@ -302,15 +348,21 @@ def _tau2_scores_by_task(path: str | Path) -> dict[str, dict[str, Any]]:
 
 def _tau2_scores_from_data(data: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     scores: dict[str, dict[str, Any]] = {}
-    for sim in data.get("simulations", []) or []:
+    for index, sim in enumerate(data.get("simulations", []) or []):
         if not isinstance(sim, dict):
             continue
         task_id = str(sim.get("task_id") or "")
         if not task_id:
             continue
-        reward_info = sim.get("reward_info") or {}
-        scores[task_id] = {
-            "score": float(reward_info.get("reward") or 0.0),
+        reward = reward_value(sim)
+        if reward is None:
+            continue
+        key = str(sim.get("id") or f"{task_id}:{sim.get('trial')}:{index}")
+        if key in scores:
+            raise AmbiguousFeedbackError(f"Duplicate simulation identity {key}")
+        scores[key] = {
+            "score": reward, "task_id": task_id,
+            "simulation_id": sim.get("id"), "trial": sim.get("trial"), "seed": sim.get("seed"),
             "termination_reason": sim.get("termination_reason"),
         }
     return scores

@@ -16,7 +16,6 @@ Advantages over fixed-tag approaches:
 from __future__ import annotations
 
 import json
-import random
 from collections import defaultdict
 from fedskill.clustering.base import ClusteringStrategy
 from fedskill.clustering.embedding_clustering import EmbeddingClustering
@@ -77,12 +76,19 @@ class HybridClustering(ClusteringStrategy):
         max_cluster_size: Maximum skills per cluster (default: 8).
     """
 
-    def __init__(self, distance_threshold: float = 0.5, max_cluster_size: int = 8):
+    def __init__(self, distance_threshold: float = 0.5, max_cluster_size: int = 8,
+                 embedding_model: str = "all-MiniLM-L6-v2", embedding_revision: str | None = None,
+                 strict_embeddings: bool = False, seed: int = 42):
         self.distance_threshold = distance_threshold
         self.max_cluster_size = max_cluster_size
+        self.embedding_model = embedding_model
+        self.embedding_revision = embedding_revision
+        self.strict_embeddings = strict_embeddings
         self._embedding_clusterer = EmbeddingClustering(
             distance_threshold=distance_threshold,
             max_cluster_size=max_cluster_size,
+            embedding_model=embedding_model, embedding_revision=embedding_revision,
+            strict_embeddings=strict_embeddings, seed=seed,
         )
         self._discovered_categories: list[str] = []
         self._category_sizes: dict[str, int] = {}
@@ -164,7 +170,7 @@ class HybridClustering(ClusteringStrategy):
             from sentence_transformers import SentenceTransformer
             import numpy as np
 
-            model = SentenceTransformer("all-MiniLM-L6-v2")
+            model = SentenceTransformer(self.embedding_model, revision=self.embedding_revision)
 
             # Encode category names
             cat_embeddings = model.encode(categories, normalize_embeddings=True)
@@ -182,6 +188,8 @@ class HybridClustering(ClusteringStrategy):
             return [categories[idx] for idx in best_indices]
 
         except ImportError:
+            if self.strict_embeddings:
+                raise RuntimeError("Paper hybrid assignment requires sentence-transformers.")
             # Fallback: assign all to first category
             return [categories[0]] * len(skills)
 

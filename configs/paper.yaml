@@ -10,11 +10,13 @@ benchmark:
   max_retries: 0
   agent_temperature: 0.2
   user_temperature: 0.2
+  seed: 42
 
 skill_evolution:
   rounds: 3
   clustering_strategy: hybrid
   embedding_model: all-MiniLM-L6-v2
+  strict_embeddings: true
   distance_threshold: 0.5
   max_cluster_size: 8
   min_cluster_size: 2
@@ -24,6 +26,11 @@ skill_evolution:
   extraction_temperature: 0.4
   synthesis_temperature: 0.5
   gate_temperature: 0.2
+
+quality:
+  alpha: 0.35
+  retire_quality_threshold: 0.15
+  retire_min_injections: 5
 
 retrieval:
   static_top_k: 10
@@ -37,6 +44,12 @@ task_splits:
   banking_knowledge: configs/task_splits/banking_knowledge_97.json
   retail: configs/task_splits/retail_114.json
   telecom: configs/task_splits/telecom_200.json
+
+task_sets:
+  telecom: telecom
+
+task_split_names:
+  telecom: full
 
 models:
   note: "Set provider-specific model identifiers through environment variables."

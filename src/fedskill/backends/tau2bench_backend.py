@@ -22,11 +22,13 @@ import os
 import subprocess
 import sys
 import uuid
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from fedskill.backends.base import ExecutionBackend, SessionData, TaskSpec
 from fedskill.backends.registry import register_backend
+from fedskill.utils.run_manifest import atomic_write_json, bind_state, fingerprint
 
 
 class Tau2BenchBackend(ExecutionBackend):
@@ -63,16 +65,27 @@ class Tau2BenchBackend(ExecutionBackend):
     # ------------------------------------------------------------------
 
     def run_task(self, task: TaskSpec, skills: list[dict] | None = None) -> SessionData:
-        """Run one tau2 task via the tau2 CLI and return its session.
-
-        Skill injection for tau2 is implemented in a later phase; for now the
-        optional skills are recorded in metadata and can be used by a custom
-        tau2 agent once registered.
-        """
-        if skills:
-            self._injected_skills = skills
-
-        run_name = self.config.get("active_run_name") or f"fedskill_tau2_{self._domain}_{task.task_id}_{uuid.uuid4().hex[:6]}"
+        """Run a real patched agent; report only selections recorded by that agent."""
+        if skills is not None:
+            self._injected_skills = deepcopy(skills)
+        candidates = self._injected_skills
+        agent = "fedskill_llm_agent" if candidates else "llm_agent"
+        if candidates:
+            agent_path = self._src_dir / "tau2/agent/llm_agent.py"
+            if not agent_path.exists() or "def create_fedskill_llm_agent(" not in agent_path.read_text():
+                raise RuntimeError("Skill injection requires integrations/tau2/fedskill_tau2_integration.patch.")
+        identity = {
+            "domain": self._domain, "task_id": task.task_id, "split": self._task_split_name,
+            "agent": agent, "agent_llm": self._agent_llm, "user_llm": self._user_llm,
+            "max_steps": self._max_steps, "seed": self.config.get("seed", 42),
+            "skills": candidates, "injection_mode": self.config.get("injection_mode", "static"),
+            "max_skills": self.config.get("max_skills", 10),
+        }
+        prefix = self.config.get("active_run_name") or f"fedskill_tau2_{self._domain}_{task.task_id}_{uuid.uuid4().hex[:6]}"
+        run_name = f"{prefix}_{fingerprint(identity)[:12]}"
+        run_dir = self._simulations_dir / run_name
+        bind_state(run_dir / "skillladder_manifest.json", identity)
+        selection_log = run_dir / "skill_usage.jsonl"
         cmd = [
             self._python_cmd,
             "-m",
@@ -80,6 +93,10 @@ class Tau2BenchBackend(ExecutionBackend):
             "run",
             "--domain",
             self._domain,
+            "--task-split-name",
+            self._task_split_name,
+            "--agent",
+            agent,
             "--task-ids",
             task.task_id,
             "--num-trials",
@@ -98,6 +115,8 @@ class Tau2BenchBackend(ExecutionBackend):
             str(self._max_steps),
             "--max-retries",
             str(self._max_retries),
+            "--seed",
+            str(self.config.get("seed", 42)),
             "--auto-resume",
             "--save-to",
             run_name,
@@ -106,6 +125,19 @@ class Tau2BenchBackend(ExecutionBackend):
         ]
 
         env = self._tau2_env()
+        if candidates:
+            skills_file = run_dir / "skillladder_skills.json"
+            atomic_write_json(skills_file, candidates)
+            env["FEDSKILL_TAU2_SKILLS_PATH"] = str(skills_file)
+            env["FEDSKILL_TAU2_INJECTION_MODE"] = self.config.get("injection_mode", "static")
+            env["FEDSKILL_TAU2_MAX_SKILLS"] = str(self.config.get("max_skills", 10))
+            env["FEDSKILL_TAU2_SKILL_LOG_PATH"] = str(selection_log)
+            for config_key, variable in (
+                ("dynamic_top_k", "DYNAMIC_TOP_K"), ("retrieval_candidates", "RETRIEVAL_CANDIDATES"),
+                ("librarian_max_rounds", "LIBRARIAN_MAX_ROUNDS"), ("skill_min_overlap", "MIN_SKILL_OVERLAP"),
+            ):
+                if config_key in self.config:
+                    env[f"FEDSKILL_TAU2_{variable}"] = str(self.config[config_key])
         try:
             subprocess.run(
                 cmd,
@@ -131,8 +163,18 @@ class Tau2BenchBackend(ExecutionBackend):
             outcome="failure",
             metadata={"error": f"No simulation found in {results_path}", "run_name": run_name},
         )
-        if skills:
-            session.skills_used = [s.get("name", s.get("id", "skill")) for s in skills]
+        if candidates:
+            used = set()
+            if selection_log.exists():
+                for line in selection_log.read_text().splitlines():
+                    event = json.loads(line)
+                    if str(event.get("task_id")) == task.task_id:
+                        used.update(str(s.get("id") or s.get("name")) for s in event.get("selected_skills", [])
+                                    if s.get("id") or s.get("name"))
+            else:
+                session.metadata["selection_log_status"] = "missing; usage unavailable"
+            session.skills_used = sorted(used)
+            session.metadata["selection_log_path"] = str(selection_log)
         self._session_history.append(session)
         return session
 
@@ -150,8 +192,8 @@ class Tau2BenchBackend(ExecutionBackend):
         return sessions[-limit:]
 
     def inject_skills(self, skills: list[dict]) -> bool:
-        """Store skills for a future tau2 FedSkill agent implementation."""
-        self._injected_skills = skills
+        """Set the candidate library used by subsequent run_task calls."""
+        self._injected_skills = deepcopy(skills)
         return True
 
     def health_check(self) -> bool:
@@ -187,7 +229,11 @@ class Tau2BenchBackend(ExecutionBackend):
 
     def _tau2_env(self) -> dict[str, str]:
         env = os.environ.copy()
+        for key in list(env):
+            if key.startswith("FEDSKILL_TAU2_"):
+                del env[key]
         env["PYTHONPATH"] = str(self._src_dir)
+        env["TAU2_DATA_DIR"] = str(self._tau2_root / "data")
         if self._openai_base_url:
             env["OPENAI_API_BASE"] = self._openai_base_url
             env["OPENAI_BASE_URL"] = self._openai_base_url

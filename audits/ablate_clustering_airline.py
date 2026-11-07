@@ -26,6 +26,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import io
+import random
 import os
 import sys
 import time
@@ -48,6 +50,10 @@ from fedskill.server.evolver import (  # noqa: E402
     evolve_skill_cluster,
     evaluate_skill,
 )
+from fedskill.utils.run_manifest import (  # noqa: E402
+    atomic_write_json, atomic_write_text, bind_state, cluster_identity,
+    code_identity, file_digest, read_json,
+)
 
 ARTIFACT_DIR = REPO_ROOT / "output" / "tau2_airline_train50" / "skills_from_train"
 OUT_DIR = REPO_ROOT / "output" / "clustering_ablation_airline"
@@ -61,6 +67,7 @@ SUMMARY_JSON = OUT_DIR / "summary.json"
 # Score gate is identical for all strategies so this only fixes the scoring
 # basis, not the relative comparison.
 MAX_TASKS_FOR_SCORING = 30
+SEED = 42
 
 
 # --------------------------------------------------------------------------
@@ -96,6 +103,8 @@ PER_CLUSTER_COLS = [
     "strategy_key",
     "strategy_label",
     "cluster_idx",
+    "cluster_id",
+    "fingerprint",
     "cluster_size",
     "best_parent_score",
     "evolved",         # 1 if evolution returned a skill, else 0
@@ -136,28 +145,31 @@ def load_task_descriptions(limit: int = MAX_TASKS_FOR_SCORING) -> list[str]:
 # Resume support
 # --------------------------------------------------------------------------
 
-def load_done_set() -> set[tuple[str, int]]:
-    """Return set of (strategy_key, cluster_idx) already in per_cluster.csv."""
-    done: set[tuple[str, int]] = set()
+def load_done_set() -> set[tuple[str, str]]:
+    """Return stable completed identities; reject unbound/partial legacy rows."""
+    done: set[tuple[str, str]] = set()
     if not PER_CLUSTER_CSV.exists():
         return done
     with PER_CLUSTER_CSV.open("r", encoding="utf-8", newline="") as f:
         rdr = csv.DictReader(f)
         for row in rdr:
-            try:
-                done.add((row["strategy_key"], int(row["cluster_idx"])))
-            except (KeyError, ValueError):
-                continue
+            if not row.get("cluster_id") or not row.get("fingerprint") or row.get("evolved") not in {"0", "1"}:
+                raise ValueError(f"Unbound or corrupt CSV row in {PER_CLUSTER_CSV}; use a new output directory.")
+            key = row["strategy_key"], row["cluster_id"]
+            if key in done:
+                raise ValueError(f"Duplicate cluster row {key}")
+            done.add(key)
     return done
 
 
 def append_row(row: dict) -> None:
-    is_new = not PER_CLUSTER_CSV.exists()
-    with PER_CLUSTER_CSV.open("a", encoding="utf-8", newline="") as f:
-        wr = csv.DictWriter(f, fieldnames=PER_CLUSTER_COLS)
-        if is_new:
-            wr.writeheader()
-        wr.writerow(row)
+    text = PER_CLUSTER_CSV.read_text(encoding="utf-8") if PER_CLUSTER_CSV.exists() else ""
+    buffer = io.StringIO(newline="")
+    wr = csv.DictWriter(buffer, fieldnames=PER_CLUSTER_COLS)
+    if not text:
+        wr.writeheader()
+    wr.writerow(row)
+    atomic_write_text(PER_CLUSTER_CSV, text + buffer.getvalue())
 
 
 # --------------------------------------------------------------------------
@@ -168,16 +180,41 @@ def run_strategy(
     spec: StrategySpec,
     skills: list[Skill],
     task_descs: list[str],
-    done: set[tuple[str, int]],
+    done: set[tuple[str, str]],
 ) -> dict:
     print(f"\n{'='*70}", flush=True)
     print(f"[strategy] {spec.key} ({spec.label})", flush=True)
     print(f"{'='*70}", flush=True)
 
-    strat = get_clustering_strategy(spec.name, **spec.kwargs)
-
     t0 = time.time()
-    clusters = strat.cluster(skills)
+    snapshot = OUT_DIR / f"{spec.key}_clusters.json"
+    manifest_path = OUT_DIR / f"{spec.key}_manifest.json"
+    if snapshot.exists() and not manifest_path.exists():
+        raise ValueError(f"Unbound cluster snapshot {snapshot}")
+    state = bind_state(manifest_path, {
+        "skills": [s.to_dict() for s in skills], "tasks": task_descs,
+        "strategy": spec.name, "kwargs": spec.kwargs, "seed": SEED,
+        "code": code_identity(REPO_ROOT),
+        "model": os.getenv("SKILLLADDER_MODEL") or os.getenv("OPENAI_MODEL"),
+    })
+    if snapshot.exists():
+        if file_digest(snapshot) != state.get("clusters_digest"):
+            raise ValueError(f"Changed cluster snapshot {snapshot}")
+        clusters = [[Skill.from_dict(d) for d in c] for c in read_json(snapshot)]
+    else:
+        strat = get_clustering_strategy(spec.name, **spec.kwargs)
+        clusters = strat.cluster([Skill.from_dict(s.to_dict()) for s in skills])
+        atomic_write_json(snapshot, [[s.to_dict() for s in c] for c in clusters])
+        state["clusters_digest"] = file_digest(snapshot)
+        atomic_write_json(manifest_path, state)
+    if PER_CLUSTER_CSV.exists():
+        with PER_CLUSTER_CSV.open(encoding="utf-8", newline="") as stream:
+            allowed = {cluster_identity(c) for c in clusters}
+            for row in csv.DictReader(stream):
+                if row["strategy_key"] == spec.key and (
+                    row["fingerprint"] != state["fingerprint"] or row["cluster_id"] not in allowed
+                ):
+                    raise ValueError(f"Mismatched saved row for {spec.key}; use a new output directory.")
     cluster_time = time.time() - t0
 
     sizes = [len(c) for c in clusters]
@@ -193,7 +230,8 @@ def run_strategy(
     evolved_scores: list[float] = []
 
     for k, (cluster_idx, cluster) in enumerate(multi, start=1):
-        if (spec.key, cluster_idx) in done:
+        cluster_id = cluster_identity(cluster)
+        if (spec.key, cluster_id) in done:
             print(f"  [skip] [{k:>3}/{len(multi)}] cluster_idx={cluster_idx} already done", flush=True)
             continue
 
@@ -202,7 +240,9 @@ def run_strategy(
         evolved = None
         score_val: float | str = ""
         try:
-            evolved = evolve_skill_cluster(cluster, task_descriptions=task_descs)
+            evolved = evolve_skill_cluster(
+                cluster, task_descriptions=task_descs, rng=random.Random(f"{SEED}:{cluster_id}")
+            )
         except Exception as e:  # noqa: BLE001
             print(f"  [err evolve] cluster_idx={cluster_idx}: {e}", flush=True)
 
@@ -229,6 +269,8 @@ def run_strategy(
             "strategy_key":      spec.key,
             "strategy_label":    spec.label,
             "cluster_idx":       cluster_idx,
+            "cluster_id":        cluster_id,
+            "fingerprint":       state["fingerprint"],
             "cluster_size":      len(cluster),
             "best_parent_score": round(best_parent_score, 4),
             "evolved":           int(accepted),
@@ -319,6 +361,7 @@ def write_per_strategy_csv(agg: dict) -> None:
 def main() -> None:
     global ARTIFACT_DIR, OUT_DIR, SKILLS_PATH, SESSIONS_PATH
     global PER_CLUSTER_CSV, PER_STRATEGY_CSV, SUMMARY_JSON
+    global SEED
 
     parser = argparse.ArgumentParser(description="Run the paper's clustering ablation.")
     parser.add_argument(
@@ -327,7 +370,9 @@ def main() -> None:
         help="Directory containing level0_all.json and sessions.json.",
     )
     parser.add_argument("--output-dir", default=str(OUT_DIR))
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
+    SEED = args.seed
 
     ARTIFACT_DIR = Path(args.artifact_dir)
     OUT_DIR = Path(args.output_dir)
@@ -357,6 +402,8 @@ def main() -> None:
                     if isinstance(v, dict) and "strategy_key" in v:
                         prev_meta_by_key[k] = v
         except Exception as e:  # noqa: BLE001
+            if isinstance(e, ValueError):
+                raise
             print(f"[warn] could not load prev summary: {e}", flush=True)
 
     per_strategy_meta: list[dict] = []
@@ -383,6 +430,8 @@ def main() -> None:
         try:
             meta = run_strategy(spec, skills, task_descs, done)
         except Exception as e:  # noqa: BLE001
+            if isinstance(e, ValueError):
+                raise
             print(f"[err strategy {spec.key}] {type(e).__name__}: {e}", flush=True)
             meta = {
                 "strategy_key": spec.key,
