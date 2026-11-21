@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkillLadder：多用户智能体技能演化</title>
+  <meta name="description" content="SkillLadder：从本地执行经验到共享的智能体技能。了解多用户技能演化、质量门控合成与脱敏共享，阅读论文，并通过手把手教程试用开源代码。">
+  <link rel="canonical" href="https://arcs-ur.github.io/SkillLadder/zh/">
+  <link rel="alternate" hreflang="en" href="https://arcs-ur.github.io/SkillLadder/">
+  <link rel="alternate" hreflang="zh-CN" href="https://arcs-ur.github.io/SkillLadder/zh/">
+  <link rel="alternate" hreflang="x-default" href="https://arcs-ur.github.io/SkillLadder/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SkillLadder：多用户智能体技能演化">
+  <meta property="og:description" content="从本地经验到共享技能：论文、方法解读、开源代码与手把手试用教程。">
+  <meta property="og:url" content="https://arcs-ur.github.io/SkillLadder/zh/">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta name="twitter:card" content="summary">
+  <meta name="theme-color" content="#070c16">
+  <link rel="stylesheet" href="../assets/site.css">
+  <script src="../assets/site.js" defer></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "ScholarlyArticle",
+        "@id": "https://doi.org/10.18653/2026.findings-emnlp.218",
+        "name": "SkillLadder: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis",
+        "url": "https://aclanthology.org/2026.findings-emnlp.218/",
+        "identifier": "10.18653/2026.findings-emnlp.218",
+        "author": [
+          {"@type": "Person", "name": "Nan Chen"},
+          {"@type": "Person", "name": "Yi Wang"},
+          {"@type": "Person", "name": "Bin Benjamin Zhu"},
+          {"@type": "Person", "name": "Haoyi Xiong"}
+        ],
+        "isPartOf": {
+          "@type": "PublicationIssue",
+          "name": "Findings of the Association for Computational Linguistics: EMNLP 2026"
+        },
+        "pagination": "4553-4573",
+        "keywords": ["LLM agents", "agent skill learning", "multi-user skill evolution", "procedural memory", "quality-gated synthesis", "sanitized skill sharing", "tau2-bench"]
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "https://github.com/Arcs-ur/SkillLadder",
+        "name": "SkillLadder research artifacts",
+        "codeRepository": "https://github.com/Arcs-ur/SkillLadder",
+        "url": "https://arcs-ur.github.io/SkillLadder/",
+        "programmingLanguage": "Python",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "citation": {"@id": "https://doi.org/10.18653/2026.findings-emnlp.218"},
+        "description": "Public extraction, clustering, quality-gated synthesis, sanitization, retrieval integration, and audit code for corrected reruns. Raw traces and generated results are not bundled."
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳转到正文</a>
+  <header class="site-header">
+    <a class="brand" href="#home"><span class="brand-mark" aria-hidden="true">▥</span> SkillLadder</a>
+    <nav aria-label="主导航">
+      <a href="#method">方法</a>
+      <a href="#paper">论文</a>
+      <a href="#tutorial">动手试用</a>
+      <a href="#citation">引用</a>
+    </nav>
+    <div class="language-switch" role="group" aria-label="语言">
+      <a href="../" data-language-link lang="en" hreflang="en" aria-label="切换到英文页面">EN</a>
+      <a href="./" aria-current="page" lang="zh-CN">中文</a>
+    </div>
+  </header>
+  <main id="main">
+    <noscript><p class="notice">请选中命令后手动复制。阅读、导航和语言切换不依赖 JavaScript。</p></noscript>
+    <section class="hero" id="home">
+      <div class="hero-copy">
+        <p class="eyebrow">EMNLP 2026 研究成果 / 开放研究</p>
+        <h1>SkillLadder<span>让本地经验，成为共享的智能体技能。</span></h1>
+        <p class="lead">从智能体成功与失败的执行轨迹中提炼可复用的程序性知识，通过质量门控不断演化，在不汇集原始轨迹的前提下共享脱敏技能。</p>
+        <div class="actions">
+          <a class="button primary" href="https://aclanthology.org/2026.findings-emnlp.218.pdf">阅读 / 下载论文 ↗</a>
+          <a class="button secondary" href="#tutorial">开始手把手教程 →</a>
+          <a class="text-link" href="https://github.com/Arcs-ur/SkillLadder">查看开源代码 ↗</a>
+        </div>
+        <p class="authors">Nan Chen · Yi Wang · Bin Benjamin Zhu · Haoyi Xiong</p>
+        <div class="hero-facts"><span>本地经验学习</span><span>质量门控演化</span><span>代码开放</span></div>
+      </div>
+      <div class="ladder" aria-label="技能演化示意图，并非实测技能数量">
+        <div class="ladder-top"><span class="status-dot"></span><span>执行经验 → 程序性记忆</span></div>
+        <div class="rung rung-3"><span>L3</span><div><strong>更高层次的合成</strong><small>可复用的程序性知识</small></div></div>
+        <div class="rung rung-2"><span>L2</span><div><strong>进一步抽象</strong><small>仅接受通过质量门控的结果</small></div></div>
+        <div class="rung rung-1"><span>L1</span><div><strong>跨贡献者合成</strong><small>对外共享前进行脱敏</small></div></div>
+        <div class="rung rung-0"><span>L0</span><div><strong>贡献者本地技能</strong><small>同时从成功与失败中学习</small></div></div>
+        <p class="ladder-foot">原始轨迹保留在本地；共享载荷不含父技能谱系。</p>
+      </div>
+    </section>
+    <section id="method" class="section">
+      <p class="eyebrow">核心思路</p>
+      <h2>共同学习，有选择地共享。</h2>
+      <p class="section-intro">通过质量门控的 L0–L3 层级体系，连接本地技能学习、多用户演化与面向任务的检索。</p>
+      <div class="card-grid">
+        <article class="card"><span class="card-number">01 / 提取</span><h3>经验留在本地</h3><p>从成功与失败的会话中提取 L0 技能。原始执行轨迹由贡献者保留，不进入共享的轨迹池。</p></article>
+        <article class="card"><span class="card-number">02 / 演化</span><h3>先合成，再过门控</h3><p>聚类相关贡献并合成 L1–L3 技能。五道质量门控将子技能与最强父技能比较；未通过的合成回退到父技能。</p></article>
+        <article class="card"><span class="card-number">03 / 检索</span><h3>共享有用的知识</h3><p>发布脱敏后的 L1+ 技能，不携带私有来源信息或父技能谱系。接收方通过静态前若干项注入，或动态技能检索助手使用技能。</p></article>
+      </div>
+      <div class="notice"><strong>面向合规，不等于隐私保证。</strong> <span>实体保留率与来源归因是对残余暴露的经验测量，不是差分隐私或密码学保护。</span></div>
+    </section>
+    <section id="paper" class="section paper-section">
+      <div>
+        <p class="eyebrow">论文与开放研究产物</p>
+        <h2>阅读研究，探索实现。</h2>
+        <div class="paper-badge"><span aria-hidden="true">↗</span> EMNLP 2026 · 研究成果</div>
+        <p class="paper-name">SkillLadder：面向合规同步与质量门控合成的多用户技能演化</p>
+        <p>发表于 EMNLP 2026 Findings · 第 4553–4573 页</p>
+        <div class="actions">
+          <a class="button primary" href="https://aclanthology.org/2026.findings-emnlp.218.pdf">下载论文 ↗</a>
+          <a class="button outline" href="https://aclanthology.org/2026.findings-emnlp.218/">论文官方主页 ↗</a>
+        </div>
+        <p class="fine-print">论文题目为中文译名；官方论文为英文。下载链接指向 ACL Anthology 官方地址，可使用浏览器的下载按钮保存。</p>
+      </div>
+      <div class="resource-list">
+        <a href="https://github.com/Arcs-ur/SkillLadder"><strong>开源代码</strong><span>Python 实现 · Apache 2.0 许可 ↗</span></a>
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/PAPER_TO_CODE.md"><strong>论文与代码对应关系</strong><span>方法、表格、入口与复现缺口 ↗</span></a>
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/REPRODUCIBILITY.md"><strong>完整复现指南</strong><span>迁移、基线对比、断点续跑与审计 ↗</span></a>
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/RELEASE_SCOPE.md"><strong>发布范围</strong><span>公开代码与本地研究产物的边界 ↗</span></a>
+      </div>
+    </section>
+    <section class="section benchmark">
+      <p class="eyebrow">tau2-bench 基准</p>
+      <h2>四个领域，明确的评测条件。</h2>
+      <div class="domain-grid">
+        <div><strong>50</strong><span>航空任务</span></div>
+        <div><strong>97</strong><span>银行知识任务</span></div>
+        <div><strong>114</strong><span>零售任务</span></div>
+        <div><strong>200</strong><span>电信任务</span></div>
+      </div>
+      <p>对比无技能基线、原始 L0、脱敏 L1+、内部完整技能库的静态检索及动态检索。Qwen 迁移复用固定的 Sonnet 来源技能库，不从 Qwen 轨迹重新学习技能库。</p>
+      <p class="notice"><strong>支持修正后的重跑，不宣称已验证数值复现。</strong> <span>原始轨迹、生成技能、结果、日志和人工标注未随仓库发布。论文数值属于历史结果，当前代码不构成对全部论文结果的复现证明。</span></p>
+    </section>
+    <section id="tutorial" class="section">
+      <p class="eyebrow">动手实践 / 从零开始</p>
+      <h2>一步一步，试用代码。</h2>
+      <p class="section-intro">先运行不需要凭证的离线检查，再预览实验命令，最后自行决定是否发起付费模型实验。这是研究代码，不是在线演示服务，也不是即装即用的技能市场。</p>
+      <p class="notice">准备工作：Git、Python 3.12 和终端。以下命令使用 Linux / macOS 的 bash；Windows 用户可使用 WSL 中的 Ubuntu。各步骤在同一个终端中执行。安装需要联网，离线检查不需要密钥或模型权重。</p>
+      <ol class="steps">
+        <li class="step">
+          <div class="step-heading"><span class="step-index">01</span><div><span class="tag">本地安装 · 无模型调用</span><h3>克隆并安装</h3></div></div>
+          <p>在仓库根目录创建隔离环境。如果找不到 <code>python3.12</code>，请先安装 Python 3.12；激活后用 <code>python --version</code> 确认版本。</p>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="install-code">复制</button></div><pre><code id="install-code">git clone https://github.com/Arcs-ur/SkillLadder.git
+cd SkillLadder
+python3.12 -m venv .venv
+source .venv/bin/activate
+python --version
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"</code></pre></div>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">02</span><div><span class="tag">离线检查 · 无需凭证</span><h3>运行离线检查</h3></div></div>
+          <p>回归测试替换模型调用并禁止网络连接。成功时末尾会显示测试通过汇总。这验证代码行为，不代表论文性能。</p>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="test-code">复制</button></div><pre><code id="test-code">python -m pytest -q -p no:cacheprovider</code></pre></div>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">03</span><div><span class="tag">可选 · 基准环境配置</span><h3>准备固定版本的 tau2 集成</h3></div></div>
+          <p>仅当你希望预览或运行基准实验时继续。在同级目录创建新的 tau2 工作副本，补丁只应用一次。即便仅做文本任务，也需先安装 PortAudio 头文件再安装 Python 扩展依赖。</p>
+          <div class="code-block"><div class="code-toolbar"><span>仅适用于 Ubuntu / Debian</span><button type="button" data-copy="native-linux-code">复制</button></div><pre><code id="native-linux-code">sudo apt-get update
+sudo apt-get install portaudio19-dev</code></pre></div>
+          <div class="code-block"><div class="code-toolbar"><span>仅适用于 macOS · 替代上面的命令</span><button type="button" data-copy="native-mac-code">复制</button></div><pre><code id="native-mac-code">brew install portaudio</code></pre></div>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="tau2-code">复制</button></div><pre><code id="tau2-code">export TAU2_ROOT="$(cd .. &amp;&amp; pwd)/tau2-bench"
+git clone https://github.com/sierra-research/tau2-bench.git "$TAU2_ROOT"
+git -C "$TAU2_ROOT" checkout 01e812d1d1c4df6d8d2299bf175e482527112244
+git -C "$TAU2_ROOT" apply --check "$PWD/integrations/tau2/fedskill_tau2_integration.patch"
+git -C "$TAU2_ROOT" apply "$PWD/integrations/tau2/fedskill_tau2_integration.patch"
+python -m pip install -e "${TAU2_ROOT}[voice,knowledge]"
+python scripts/check_tau2_integration.py --tau2-root "$TAU2_ROOT"</code></pre></div>
+          <p class="fine-print">预期结果：集成检查器在禁止模型调用和网络连接的情况下，验证固定版本、补丁智能体、检索行为、日志和全部四个任务集；不会下载嵌入模型权重。</p>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">04</span><div><span class="tag">命令预览 · 无实验费用</span><h3>预览五组对比条件</h3></div></div>
+          <p>在 SkillLadder 根目录执行下面的命令。模型名称是预览用的占位符，不是可执行的服务商模型标识。<code>--dry-run</code> 检查本地路径和有效配置，打印命令，不创建实验产物，也不请求模型。</p>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="preview-code">复制</button></div><pre><code id="preview-code">python scripts/run_tau2_comparison.py \
+  --tau2-root "$TAU2_ROOT" \
+  --config configs/paper.yaml --domain airline \
+  --agent-model YOUR_LITELLM_SONNET_MODEL \
+  --user-model YOUR_LITELLM_SONNET_MODEL \
+  --skill-model YOUR_OPENAI_COMPATIBLE_SONNET_MODEL \
+  --conditions baseline,l0-static,l1plus-static,full-static,full-dynamic \
+  --output-dir output/airline --dry-run</code></pre></div>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">05</span><div><span class="tag paid">自行选择 · 付费接口调用</span><h3>配置真实实验</h3></div></div>
+          <p>移除 <code>--dry-run</code> 前，将 <code>.env.example</code> 中的配置导入当前终端（驱动程序不会自动读取 <code>.env</code>）。为提取与合成设置 <code>SKILLLADDER_API_KEY</code>、<code>SKILLLADDER_BASE_URL</code>、<code>SKILLLADDER_MODEL</code>；为 tau2 配置服务商的 <code>OPENAI_*</code> 设置以及真实的 LiteLLM 智能体和用户模型标识。切勿提交密钥。</p>
+          <p>替换上面的模型占位符。论文 YAML 要求严格加载嵌入模型：确认 MiniLM 权重的提交版本，并添加 <code>--embedding-revision YOUR_WEIGHTS_COMMIT</code>。移除 <code>--dry-run</code> 后会发起请求，并可能下载权重；请先确认服务商费用和研究产物共享政策。</p>
+          <div class="actions">
+            <a class="button outline" href="https://github.com/Arcs-ur/SkillLadder/blob/main/.env.example">环境变量模板 ↗</a>
+            <a class="button outline" href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/COSTS.md">费用规划 ↗</a>
+            <a class="text-link" href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/REPRODUCIBILITY.md">完整运行说明 ↗</a>
+          </div>
+          <p>驱动程序会打印 <code>output/airline/runs/&lt;fingerprint&gt;/</code> 下的运行目录。查看 <code>comparison_manifest.json</code>、<code>summary.json / summary.md</code> 和 <code>skills_from_train/</code>。生成的轨迹与私有谱系留在本地；只有通过门控并脱敏的 L1+ 载荷用于对等共享。</p>
+        </li>
+      </ol>
+      <details class="troubleshooting">
+        <summary>常见问题与后续实验</summary>
+        <p>找不到 Python 或无法导入包？确认 Python 3.12，重新激活 <code>.venv</code>，并在 SkillLadder 根目录安装。PyAudio 编译失败通常表示缺少 PortAudio 头文件。</p>
+        <p>补丁已应用或版本不符？使用固定提交版本的新 tau2 工作副本，不要重复应用补丁。先运行集成检查，再预览对比实验。</p>
+        <p>鉴权或严格嵌入加载报错？检查服务商模型标识、已导出的环境变量与权重提交版本。不要关闭严格嵌入加载后宣称结果与论文等价。</p>
+        <p>切换到 <code>banking_knowledge</code>、<code>retail</code> 或 <code>telecom</code> 时修改 <code>--domain</code>；YAML 自动选择有序任务编号。Qwen 迁移、AWM 基线、断点续跑和审计请参考完整复现指南；这些实验不属于免费的离线教程。</p>
+      </details>
+    </section>
+    <section id="citation" class="section">
+      <p class="eyebrow">在本工作基础上继续探索</p>
+      <h2>引用 SkillLadder。</h2>
+      <p>如果在研究中使用了本方法或代码，请引用论文。以下为正式英文文献信息。</p>
+      <div class="code-block"><div class="code-toolbar"><span>BibTeX</span><button type="button" data-copy="citation-code">复制</button></div><pre><code id="citation-code">@inproceedings{chen-etal-2026-skillladder,
+  title = "{SkillLadder}: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis",
+  author = "Chen, Nan and Wang, Yi and Zhu, Bin Benjamin and Xiong, Haoyi",
+  booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2026",
+  month = oct,
+  year = "2026",
+  address = "Budapest, Hungary",
+  publisher = "Association for Computational Linguistics",
+  url = "https://aclanthology.org/2026.findings-emnlp.218/",
+  doi = "10.18653/2026.findings-emnlp.218",
+  pages = "4553--4573"
+}</code></pre></div>
+      <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/CITATION.cff">机器可读的引用信息 ↗</a>
+    </section>
+  </main>
+  <footer>
+    <a class="brand" href="#home">SkillLadder</a>
+    <p>开放研究 · Apache 2.0 代码 · MIT 许可的 tau2 集成</p>
+    <div><a href="../llms.txt">智能体导航指南</a><a href="https://github.com/Arcs-ur/SkillLadder/blob/main/THIRD_PARTY_NOTICES.md">第三方许可说明</a></div>
+  </footer>
+  <p id="copy-status" class="copy-status" role="status" aria-live="polite"></p>
+</body>
+</html>
