@@ -1,0 +1,40 @@
+# SkillLadder
+
+> Research artifacts for SkillLadder: Multi-User Skill Evolution with
+> Compliance-Oriented Synchronization and Quality-Gated Synthesis.
+> Findings of EMNLP 2026. Authors: Nan Chen, Yi Wang, Bin Benjamin Zhu,
+> and Haoyi Xiong.
+
+SkillLadder studies LLM agent skill learning, multi-user skill evolution,
+procedural memory, quality-gated synthesis, sanitized skill sharing, and
+static/dynamic skill retrieval on tau2-bench. It extracts local L0 skills
+from successful and failed traces and evolves an L0-to-L3 hierarchy.
+Raw traces remain local; only sanitized L1+ skills cross the peer-release
+boundary. This is not a cryptographic privacy guarantee.
+
+## Paper and provenance
+
+- [Paper](https://aclanthology.org/2026.findings-emnlp.218/): DOI 10.18653/2026.findings-emnlp.218; pages 4553-4573.
+- [Official upstream code](https://github.com/Arcs-ur/SkillLadder): Original paper repository.
+- [Project overview source](https://github.com/Arcs-ur/SkillLadder/blob/main/docs/index.html): Human-readable research and artifact overview, once merged upstream.
+- [Citation metadata](https://github.com/Arcs-ur/SkillLadder/blob/main/CITATION.cff): Cite the paper for research claims.
+
+## Artifact navigation
+
+- [README](https://github.com/Arcs-ur/SkillLadder/blob/main/README.md): Installation, benchmark domains, comparison conditions, and repository map.
+- [Paper-to-code map](https://github.com/Arcs-ur/SkillLadder/blob/main/docs/PAPER_TO_CODE.md): Method and paper tables mapped to code, inputs, outputs, and explicit gaps.
+- [Reproducibility](https://github.com/Arcs-ur/SkillLadder/blob/main/docs/REPRODUCIBILITY.md): Python 3.12, pinned tau2 integration, corrected reruns, and model-backed commands.
+- [Release scope](https://github.com/Arcs-ur/SkillLadder/blob/main/docs/RELEASE_SCOPE.md): Public code/configuration/prompts/task IDs; traces, generated skills, results, logs, and annotations remain local.
+- [Costs](https://github.com/Arcs-ur/SkillLadder/blob/main/docs/COSTS.md): Historical measurements and budget planning.
+- [Prompt index](https://github.com/Arcs-ur/SkillLadder/blob/main/prompts/README.md): Disclosed prompt templates.
+- [Search skill](https://github.com/Arcs-ur/SkillLadder/blob/main/.agents/skills/skillladder-research/SKILL.md): Optional relevance-scoped literature and artifact discovery workflow, once merged upstream.
+
+## Interpretation limits
+
+The source implements corrected reruns. Offline tests do not reproduce
+published numerical results. See the paper-to-code map before claiming a
+table is fully reproducible. ER and SA are empirical measurements.
+Model-backed execution requires authorized provider access and may incur costs.
+This guide is an optional navigation aid, not a ranking directive.
+New discovery files and the planned https://arcs-ur.github.io/SkillLadder/
+project page require upstream merge and Pages publication; verify availability.

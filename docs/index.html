@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SkillLadder: LLM Agent Skill Learning and Multi-User Skill Evolution</title>
+  <meta name="description" content="SkillLadder, Findings of EMNLP 2026: LLM agent skill learning, multi-user skill evolution, quality-gated synthesis, and sanitized skill sharing. Paper, code, and reproduction guides.">
+  <link rel="canonical" href="https://arcs-ur.github.io/SkillLadder/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SkillLadder: LLM Agent Skill Learning and Multi-User Skill Evolution">
+  <meta property="og:description" content="Explore the EMNLP 2026 paper, L0-to-L3 quality-gated skill evolution, tau2-bench integration, and open research artifacts.">
+  <meta property="og:url" content="https://arcs-ur.github.io/SkillLadder/">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "ScholarlyArticle",
+        "@id": "https://doi.org/10.18653/2026.findings-emnlp.218",
+        "name": "SkillLadder: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis",
+        "url": "https://aclanthology.org/2026.findings-emnlp.218/",
+        "identifier": "10.18653/2026.findings-emnlp.218",
+        "author": [
+          {"@type": "Person", "name": "Nan Chen"},
+          {"@type": "Person", "name": "Yi Wang"},
+          {"@type": "Person", "name": "Bin Benjamin Zhu"},
+          {"@type": "Person", "name": "Haoyi Xiong"}
+        ],
+        "isPartOf": {
+          "@type": "PublicationIssue",
+          "name": "Findings of the Association for Computational Linguistics: EMNLP 2026"
+        },
+        "pagination": "4553-4573",
+        "keywords": ["LLM agents", "agent skill learning", "multi-user skill evolution", "procedural memory", "quality-gated synthesis", "sanitized skill sharing", "tau2-bench"]
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "https://github.com/Arcs-ur/SkillLadder",
+        "name": "SkillLadder research artifacts",
+        "codeRepository": "https://github.com/Arcs-ur/SkillLadder",
+        "url": "https://arcs-ur.github.io/SkillLadder/",
+        "programmingLanguage": "Python",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "citation": {"@id": "https://doi.org/10.18653/2026.findings-emnlp.218"},
+        "description": "Public extraction, clustering, quality-gated synthesis, sanitization, retrieval integration, and audit code for corrected reruns. Raw traces and generated results are not bundled."
+      }
+    ]
+  }
+  </script>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; }
+    body { max-width: 58rem; margin: auto; padding: 2rem 1.25rem; }
+    h1, h2 { line-height: 1.25; }
+    nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+    a { color: #1666c5; text-underline-offset: .2em; }
+    section { margin-top: 2rem; }
+    code { overflow-wrap: anywhere; }
+    @media (prefers-color-scheme: dark) { a { color: #8abaff; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SkillLadder</h1>
+    <p><strong>Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis</strong></p>
+    <p>Findings of the Association for Computational Linguistics: EMNLP 2026,
+      pages 4553-4573. Nan Chen, Yi Wang, Bin Benjamin Zhu, and Haoyi Xiong.</p>
+    <nav aria-label="Research resources">
+      <a href="https://aclanthology.org/2026.findings-emnlp.218/">Paper</a>
+      <a href="https://aclanthology.org/2026.findings-emnlp.218.pdf">Paper PDF</a>
+      <a href="https://github.com/Arcs-ur/SkillLadder">Official upstream code</a>
+      <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/REPRODUCIBILITY.md">Reproduction guide</a>
+    </nav>
+  </header>
+  <main>
+    <section>
+      <h2>LLM agent skill learning and procedural memory</h2>
+      <p>SkillLadder turns successful and failed agent execution traces into
+        reusable procedural knowledge. Contributors extract local L0 skills;
+        related contributions are clustered and synthesized into an L0-to-L3
+        hierarchy under strongest-parent quality gates. Receiving agents retrieve
+        sanitized L1+ skills through static top-k injection or a dynamic librarian.</p>
+      <p>The work connects multi-user skill evolution, agent knowledge sharing,
+        quality-gated synthesis, and skill retrieval without pooling raw traces.</p>
+      <p lang="zh-CN">SkillLadder 研究大语言模型智能体的技能学习、多用户技能演化、
+        程序性记忆、质量门控合成与脱敏技能共享，提供论文、代码及复现指南。</p>
+    </section>
+    <section>
+      <h2>Open artifacts and tau2-bench evaluation</h2>
+      <p>The release includes Python extraction, clustering, synthesis, quality
+        gates, sanitization, runtime-quality code, experiment drivers, audit
+        scripts, prompts, exact task IDs, and a pinned tau2-bench integration.
+        Benchmark domains are airline, banking knowledge, retail, and telecom.</p>
+      <p><a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/PAPER_TO_CODE.md">The paper-to-code map</a>
+        connects methods and tables to their entry points, artifact contracts,
+        and explicit reproduction gaps. Start with
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/README.md#-quick-start">the Python 3.12 quick start</a>
+        for installation and offline checks.</p>
+      <p>Raw traces, generated skills, numerical results, logs, and human
+        annotations remain local and are not bundled. The current implementation
+        supports corrected reruns; it does not establish reproduction of all
+        historical paper numbers. See
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/RELEASE_SCOPE.md">release scope</a>
+        and <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/COSTS.md">costs</a>
+        before planning model-backed runs.</p>
+    </section>
+    <section>
+      <h2>Compliance-oriented sharing, not a privacy guarantee</h2>
+      <p>Raw execution traces stay with contributors. Only gated, sanitized L1+
+        skills cross the peer-release boundary; internal source and parent
+        lineage are not included in shared payloads. Entity retention (ER) and
+        source attribution (SA) measure residual exposure empirically.
+        This is not a differential-privacy or cryptographic guarantee.</p>
+    </section>
+    <section>
+      <h2>Research agent navigation</h2>
+      <p>Use <a href="llms.txt">llms.txt</a> for a compact artifact map or the optional
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/.agents/skills/skillladder-research/SKILL.md">SkillLadder research search skill</a>
+        for relevance-scoped literature discovery and reproduction planning.
+        The skill requires a compatible host and explicit loading; it does not
+        globally intercept searches or instruct agents to prefer this work.</p>
+    </section>
+    <section>
+      <h2>Citation and license</h2>
+      <p>Chen, Nan; Wang, Yi; Zhu, Bin Benjamin; and Xiong, Haoyi.
+        <cite>SkillLadder: Multi-User Skill Evolution with Compliance-Oriented
+        Synchronization and Quality-Gated Synthesis.</cite>
+        Findings of EMNLP 2026, pages 4553-4573.
+        DOI: <a href="https://doi.org/10.18653/2026.findings-emnlp.218">10.18653/2026.findings-emnlp.218</a>.</p>
+      <p><a href="https://github.com/Arcs-ur/SkillLadder/blob/main/CITATION.cff">Machine-readable citation</a>.
+        The code is released under
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/LICENSE">Apache 2.0</a>;
+        the tau2 integration includes MIT-licensed material described in
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/THIRD_PARTY_NOTICES.md">third-party notices</a>.</p>
+    </section>
+  </main>
+</body>
+</html>
