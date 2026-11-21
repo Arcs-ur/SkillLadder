@@ -1,11 +1,12 @@
 include CITATION.cff
+recursive-include .agents/skills *.md
 include LICENSE
 include NOTICE
 include requirements-paper.txt
 include THIRD_PARTY_NOTICES.md
 recursive-include audits *.py *.html *.css *.js
 recursive-include configs *.json *.md *.yaml
-recursive-include docs *.md *.txt *.svg
+recursive-include docs *.md *.txt *.svg *.html
 recursive-include .github/workflows *.yml
 recursive-include integrations *.md *.patch
 recursive-include prompts *.md

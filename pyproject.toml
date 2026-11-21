@@ -6,6 +6,15 @@ build-backend = "setuptools.build_meta"
 name = "skillladder"
 version = "1.0.0"
 description = "Multi-user skill evolution with compliance-oriented synchronization and quality-gated synthesis"
+keywords = [
+  "llm-agents",
+  "agent-skill-learning",
+  "multi-user-skill-evolution",
+  "procedural-memory",
+  "quality-gated-synthesis",
+  "skill-retrieval",
+  "tau2-bench",
+]
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = "Apache-2.0"

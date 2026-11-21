@@ -29,6 +29,24 @@ knowledge. It extracts local L0 skills, synthesizes related contributions into
 L1–L3 skills under strongest-parent quality gates, and shares sanitized L1+
 skills for task-aware retrieval.
 
+**Research areas:** LLM agents, agent skill learning, multi-user skill evolution,
+procedural memory, agent knowledge sharing, quality-gated skill synthesis,
+skill retrieval, and tau2-bench evaluation. SkillLadder studies reuse of
+procedural knowledge across contributors without pooling their raw traces.
+Its compliance-oriented release boundary is empirical, not a cryptographic
+privacy guarantee.
+
+**论文与开源代码：** SkillLadder 研究大语言模型智能体的技能学习、多用户技能演化、
+程序性记忆、质量门控合成与脱敏技能共享，并在 tau2-bench 上评估静态和动态技能检索。
+
+The [project overview source](docs/index.html) connects the paper to its public
+artifacts; see the [publishing guide](docs/DISCOVERY.md#publish-and-monitor-the-project-page)
+for hosting it. For research assistants, start with the
+[machine-readable guide](docs/llms.txt) or the optional
+[SkillLadder research search skill](.agents/skills/skillladder-research/SKILL.md).
+The skill's description is a relevance hook in hosts that support Agent Skills;
+it does not install itself or change global search rankings.
+
 ## ✨ At a glance
 
 | 🧩 Extract locally | 🪜 Evolve across contributors | 🔎 Retrieve when useful |
@@ -190,6 +208,8 @@ pages 4553–4573.
 ```
 
 Machine-readable metadata is in [CITATION.cff](CITATION.cff).
+See the [discovery guide](docs/DISCOVERY.md) for GitHub search queries,
+project-page publishing, and indexing limitations.
 
 ## ⚖️ License
 

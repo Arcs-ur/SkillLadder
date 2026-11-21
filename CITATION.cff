@@ -5,6 +5,15 @@ type: software
 version: 1.0.0
 repository-code: "https://github.com/Arcs-ur/SkillLadder"
 license: Apache-2.0
+keywords:
+  - LLM agents
+  - agent skill learning
+  - multi-user skill evolution
+  - procedural memory
+  - quality-gated synthesis
+  - sanitized skill sharing
+  - skill retrieval
+  - tau2-bench
 authors:
   - family-names: Chen
     given-names: Nan
