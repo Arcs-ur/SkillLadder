@@ -25,10 +25,20 @@ skill-retrieval, tau2-bench, emnlp-2026
 
 These settings are not versioned in Git; an upstream maintainer must apply them.
 
-`index.html` is a static GitHub Pages project overview with a descriptive title,
+`index.html` is a bilingual static GitHub Pages project site with a descriptive title,
 canonical URL, description, social preview metadata, visible artifact links,
 and matching `ScholarlyArticle` / `SoftwareSourceCode` JSON-LD. It loads no
-third-party scripts and does not require JavaScript to read or follow links.
+third-party scripts. English is a complete static page at `index.html`; Chinese
+is a separate complete static page at `zh/index.html`. Header links switch
+between them without JavaScript. Each page has its own language, title,
+description, canonical URL, and reciprocal `hreflang` links.
+`assets/site.js` enables copy buttons and preserves the current section when
+switching languages; it does not replace page text, redirect based on browser
+language, or store preferences. `assets/site.css` provides the dark responsive
+layout, gradient lighting, skill hierarchy, hover effects, and short entry
+animations, with motion disabled for `prefers-reduced-motion`.
+Commands and formal citation metadata remain unchanged between languages;
+the Chinese page labels the translated paper title as a translation.
 Structured data describes the work; it does not promise Google rich results.
 
 `llms.txt` is an optional agent-readable navigation guide. Google does not
@@ -75,11 +85,29 @@ comparisons and preserves the paper's privacy and reproduction limitations.
 ## Publish and monitor the project page
 
 The intended upstream public URL is `https://arcs-ur.github.io/SkillLadder/`.
-This PR prepares the page; it does not deploy it or prove it is indexed.
-After merging, publish GitHub Pages from the `main` branch's `/docs` directory in repository
-Settings > Pages. Keep this URL consistent with `index.html`, `llms.txt`, and
-the repository homepage; update all three if the deployment location changes.
-The HTML can be served directly without Jekyll-specific features.
+The site source alone does not prove deployment or indexing.
+A repository administrator must enable **Settings > Pages > Source > GitHub
+Actions** once. `.github/workflows/pages.yml` uploads only `docs/` and deploys
+it on pushes to `main` that change the site or its workflow. For the first
+publication (or after enabling Pages), run **Publish project site** from the
+Actions tab using **Run workflow**. No custom token or API key is needed.
+If Pages has not been enabled, the workflow reports a configuration error
+rather than claiming a successful publication.
+
+Keep the URL consistent with `index.html`, `llms.txt`, and the repository
+homepage; update all three if the deployment location changes. The HTML
+requires no build, npm packages, or Jekyll-specific features.
+
+Preview locally from the repository root:
+
+```bash
+python -m http.server 8000 --bind 127.0.0.1 --directory docs
+```
+
+Open `http://127.0.0.1:8000/` or `http://127.0.0.1:8000/zh/`. Check language switching,
+copy buttons, tutorial anchors, and a narrow mobile viewport. If clipboard
+access is denied, the site selects the text and tells the reader to copy it
+manually. Stop the preview server with Ctrl-C when finished.
 
 Do not publish the fork at a different URL while retaining the upstream
 canonical URL unless intentionally consolidating duplicate content upstream.

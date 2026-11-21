@@ -6,11 +6,19 @@
   <title>SkillLadder: LLM Agent Skill Learning and Multi-User Skill Evolution</title>
   <meta name="description" content="SkillLadder, Findings of EMNLP 2026: LLM agent skill learning, multi-user skill evolution, quality-gated synthesis, and sanitized skill sharing. Paper, code, and reproduction guides.">
   <link rel="canonical" href="https://arcs-ur.github.io/SkillLadder/">
+  <link rel="alternate" hreflang="en" href="https://arcs-ur.github.io/SkillLadder/">
+  <link rel="alternate" hreflang="zh-CN" href="https://arcs-ur.github.io/SkillLadder/zh/">
+  <link rel="alternate" hreflang="x-default" href="https://arcs-ur.github.io/SkillLadder/">
   <meta property="og:type" content="website">
   <meta property="og:title" content="SkillLadder: LLM Agent Skill Learning and Multi-User Skill Evolution">
   <meta property="og:description" content="Explore the EMNLP 2026 paper, L0-to-L3 quality-gated skill evolution, tau2-bench integration, and open research artifacts.">
   <meta property="og:url" content="https://arcs-ur.github.io/SkillLadder/">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
   <meta name="twitter:card" content="summary">
+  <meta name="theme-color" content="#070c16">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -48,91 +56,182 @@
     ]
   }
   </script>
-  <style>
-    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; }
-    body { max-width: 58rem; margin: auto; padding: 2rem 1.25rem; }
-    h1, h2 { line-height: 1.25; }
-    nav { display: flex; flex-wrap: wrap; gap: 1rem; }
-    a { color: #1666c5; text-underline-offset: .2em; }
-    section { margin-top: 2rem; }
-    code { overflow-wrap: anywhere; }
-    @media (prefers-color-scheme: dark) { a { color: #8abaff; } }
-  </style>
 </head>
 <body>
-  <header>
-    <h1>SkillLadder</h1>
-    <p><strong>Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis</strong></p>
-    <p>Findings of the Association for Computational Linguistics: EMNLP 2026,
-      pages 4553-4573. Nan Chen, Yi Wang, Bin Benjamin Zhu, and Haoyi Xiong.</p>
-    <nav aria-label="Research resources">
-      <a href="https://aclanthology.org/2026.findings-emnlp.218/">Paper</a>
-      <a href="https://aclanthology.org/2026.findings-emnlp.218.pdf">Paper PDF</a>
-      <a href="https://github.com/Arcs-ur/SkillLadder">Official upstream code</a>
-      <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/REPRODUCIBILITY.md">Reproduction guide</a>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="#home"><span class="brand-mark" aria-hidden="true">▥</span> SkillLadder</a>
+    <nav aria-label="Main navigation">
+      <a href="#method">Method</a>
+      <a href="#paper">Paper</a>
+      <a href="#tutorial">Try it</a>
+      <a href="#citation">Cite</a>
     </nav>
+    <div class="language-switch" role="group" aria-label="Language">
+      <a href="./" aria-current="page" lang="en">EN</a>
+      <a href="zh/" data-language-link lang="zh-CN" hreflang="zh-CN" aria-label="Switch to Chinese">中文</a>
+    </div>
   </header>
-  <main>
-    <section>
-      <h2>LLM agent skill learning and procedural memory</h2>
-      <p>SkillLadder turns successful and failed agent execution traces into
-        reusable procedural knowledge. Contributors extract local L0 skills;
-        related contributions are clustered and synthesized into an L0-to-L3
-        hierarchy under strongest-parent quality gates. Receiving agents retrieve
-        sanitized L1+ skills through static top-k injection or a dynamic librarian.</p>
-      <p>The work connects multi-user skill evolution, agent knowledge sharing,
-        quality-gated synthesis, and skill retrieval without pooling raw traces.</p>
-      <p lang="zh-CN">SkillLadder 研究大语言模型智能体的技能学习、多用户技能演化、
-        程序性记忆、质量门控合成与脱敏技能共享，提供论文、代码及复现指南。</p>
+  <main id="main">
+    <noscript><p class="notice">Select and copy commands manually. Reading, navigation, and language switching work without JavaScript.</p></noscript>
+    <section class="hero" id="home">
+      <div class="hero-copy">
+        <p class="eyebrow">FINDINGS OF EMNLP 2026 / OPEN RESEARCH</p>
+        <h1>SkillLadder<span>From local experience to shared agent skills.</span></h1>
+        <p class="lead">A multi-user framework that turns successful and failed agent traces into reusable procedural knowledge, evolves it under quality gates, and shares sanitized skills without pooling raw traces.</p>
+        <div class="actions">
+          <a class="button primary" href="https://aclanthology.org/2026.findings-emnlp.218.pdf">Read / download paper ↗</a>
+          <a class="button secondary" href="#tutorial">Follow the tutorial →</a>
+          <a class="text-link" href="https://github.com/Arcs-ur/SkillLadder">View code ↗</a>
+        </div>
+        <p class="authors">Nan Chen · Yi Wang · Bin Benjamin Zhu · Haoyi Xiong</p>
+        <div class="hero-facts"><span>Local-first learning</span><span>Quality-gated evolution</span><span>Open source</span></div>
+      </div>
+      <div class="ladder" aria-label="Illustrative skill evolution, not measured skill counts">
+        <div class="ladder-top"><span class="status-dot"></span><span>EXPERIENCE → PROCEDURAL MEMORY</span></div>
+        <div class="rung rung-3"><span>L3</span><div><strong>Higher-level synthesis</strong><small>Reusable procedural knowledge</small></div></div>
+        <div class="rung rung-2"><span>L2</span><div><strong>Further abstraction</strong><small>Accepted only through quality gates</small></div></div>
+        <div class="rung rung-1"><span>L1</span><div><strong>Cross-contributor synthesis</strong><small>Sanitize before peer release</small></div></div>
+        <div class="rung rung-0"><span>L0</span><div><strong>Contributor-local skills</strong><small>Learn from successes and failures</small></div></div>
+        <p class="ladder-foot">Raw traces stay local. Shared payloads omit parent lineage.</p>
+      </div>
     </section>
-    <section>
-      <h2>Open artifacts and tau2-bench evaluation</h2>
-      <p>The release includes Python extraction, clustering, synthesis, quality
-        gates, sanitization, runtime-quality code, experiment drivers, audit
-        scripts, prompts, exact task IDs, and a pinned tau2-bench integration.
-        Benchmark domains are airline, banking knowledge, retail, and telecom.</p>
-      <p><a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/PAPER_TO_CODE.md">The paper-to-code map</a>
-        connects methods and tables to their entry points, artifact contracts,
-        and explicit reproduction gaps. Start with
-        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/README.md#-quick-start">the Python 3.12 quick start</a>
-        for installation and offline checks.</p>
-      <p>Raw traces, generated skills, numerical results, logs, and human
-        annotations remain local and are not bundled. The current implementation
-        supports corrected reruns; it does not establish reproduction of all
-        historical paper numbers. See
-        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/RELEASE_SCOPE.md">release scope</a>
-        and <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/COSTS.md">costs</a>
-        before planning model-backed runs.</p>
+    <section id="method" class="section">
+      <p class="eyebrow">THE IDEA</p>
+      <h2>Learn together. Share selectively.</h2>
+      <p class="section-intro">A quality-gated L0–L3 hierarchy connects local skill learning, multi-user evolution, and task-aware retrieval.</p>
+      <div class="card-grid">
+        <article class="card"><span class="card-number">01 / EXTRACT</span><h3>Keep experience local</h3><p>Extract L0 skills from both successful and failed sessions. Raw execution traces remain with contributors, rather than entering a shared trace pool.</p></article>
+        <article class="card"><span class="card-number">02 / EVOLVE</span><h3>Synthesize, then gate</h3><p>Cluster related contributions and synthesize L1–L3. Five quality gates compare children with the strongest parent; rejected synthesis falls back to parents.</p></article>
+        <article class="card"><span class="card-number">03 / RETRIEVE</span><h3>Share useful knowledge</h3><p>Release sanitized L1+ skills without private source or parent lineage. Receiving agents use static top-k injection or a dynamic librarian.</p></article>
+      </div>
+      <div class="notice"><strong>Compliance-oriented, not a privacy guarantee.</strong> <span>Entity retention and source attribution are empirical exposure measurements, not differential privacy or cryptographic protection.</span></div>
     </section>
-    <section>
-      <h2>Compliance-oriented sharing, not a privacy guarantee</h2>
-      <p>Raw execution traces stay with contributors. Only gated, sanitized L1+
-        skills cross the peer-release boundary; internal source and parent
-        lineage are not included in shared payloads. Entity retention (ER) and
-        source attribution (SA) measure residual exposure empirically.
-        This is not a differential-privacy or cryptographic guarantee.</p>
+    <section id="paper" class="section paper-section">
+      <div>
+        <p class="eyebrow">THE PAPER & ARTIFACTS</p>
+        <h2>Read the research. Explore the implementation.</h2>
+        <div class="paper-badge"><span aria-hidden="true">↗</span> EMNLP 2026 · FINDINGS</div>
+        <p class="paper-name" lang="en">SkillLadder: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis</p>
+        <p>Findings of EMNLP 2026 · pages 4553–4573</p>
+        <div class="actions">
+          <a class="button primary" href="https://aclanthology.org/2026.findings-emnlp.218.pdf">Paper PDF ↗</a>
+          <a class="button outline" href="https://aclanthology.org/2026.findings-emnlp.218/">ACL Anthology ↗</a>
+        </div>
+        <p class="fine-print">The PDF opens at the official ACL Anthology URL; use your browser's download control to save it.</p>
+      </div>
+      <div class="resource-list">
+        <a href="https://github.com/Arcs-ur/SkillLadder"><strong>Open-source code</strong><span>Python implementation · Apache 2.0 ↗</span></a>
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/PAPER_TO_CODE.md"><strong>Paper-to-code map</strong><span>Methods, tables, entry points & gaps ↗</span></a>
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/REPRODUCIBILITY.md"><strong>Full reproduction guide</strong><span>Transfer, AWM, resume & audits ↗</span></a>
+        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/RELEASE_SCOPE.md"><strong>Release scope</strong><span>Public code vs. local research artifacts ↗</span></a>
+      </div>
     </section>
-    <section>
-      <h2>Research agent navigation</h2>
-      <p>Use <a href="llms.txt">llms.txt</a> for a compact artifact map or the optional
-        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/.agents/skills/skillladder-research/SKILL.md">SkillLadder research search skill</a>
-        for relevance-scoped literature discovery and reproduction planning.
-        The skill requires a compatible host and explicit loading; it does not
-        globally intercept searches or instruct agents to prefer this work.</p>
+    <section class="section benchmark">
+      <p class="eyebrow">TAU2-BENCH</p>
+      <h2>Four domains. Explicit evaluation conditions.</h2>
+      <div class="domain-grid">
+        <div><strong>50</strong><span>Airline tasks</span></div>
+        <div><strong>97</strong><span>Banking knowledge tasks</span></div>
+        <div><strong>114</strong><span>Retail tasks</span></div>
+        <div><strong>200</strong><span>Telecom tasks</span></div>
+      </div>
+      <p>Compare baseline, original L0, sanitized L1+, internal full-library static retrieval, and internal full-library dynamic retrieval. Qwen transfer reuses a fixed Sonnet source library; it does not learn a fresh library from Qwen traces.</p>
+      <p class="notice"><strong>Corrected reruns, not verified numerical reproduction.</strong> <span>Raw traces, generated skills, results, logs, and human annotations are not bundled. Published numbers are historical; the current code does not establish reproduction of every paper result.</span></p>
     </section>
-    <section>
-      <h2>Citation and license</h2>
-      <p>Chen, Nan; Wang, Yi; Zhu, Bin Benjamin; and Xiong, Haoyi.
-        <cite>SkillLadder: Multi-User Skill Evolution with Compliance-Oriented
-        Synchronization and Quality-Gated Synthesis.</cite>
-        Findings of EMNLP 2026, pages 4553-4573.
-        DOI: <a href="https://doi.org/10.18653/2026.findings-emnlp.218">10.18653/2026.findings-emnlp.218</a>.</p>
-      <p><a href="https://github.com/Arcs-ur/SkillLadder/blob/main/CITATION.cff">Machine-readable citation</a>.
-        The code is released under
-        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/LICENSE">Apache 2.0</a>;
-        the tau2 integration includes MIT-licensed material described in
-        <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/THIRD_PARTY_NOTICES.md">third-party notices</a>.</p>
+    <section id="tutorial" class="section">
+      <p class="eyebrow">HANDS-ON / FROM ZERO</p>
+      <h2>Try the code, one step at a time.</h2>
+      <p class="section-intro">Start with credential-free offline checks. Continue to a command preview, and only then choose whether to run paid model-backed experiments. This is research code, not a hosted demo or a ready-to-install skill marketplace.</p>
+      <p class="notice">Prerequisites: Git, Python 3.12, and a terminal. Commands below use bash on Linux / macOS; Windows users can use Ubuntu in WSL. Run steps in the same shell. Installation requires internet access; offline checks need no API key or model weights.</p>
+      <ol class="steps">
+        <li class="step">
+          <div class="step-heading"><span class="step-index">01</span><div><span class="tag">LOCAL · NO MODEL CALLS</span><h3>Clone and install</h3></div></div>
+          <p>Create an isolated environment in the repository root. If python3.12 is not found, install Python 3.12 first; use python --version after activation to confirm.</p>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="install-code">Copy</button></div><pre><code id="install-code">git clone https://github.com/Arcs-ur/SkillLadder.git
+cd SkillLadder
+python3.12 -m venv .venv
+source .venv/bin/activate
+python --version
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"</code></pre></div>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">02</span><div><span class="tag">OFFLINE · NO CREDENTIALS</span><h3>Run the offline checks</h3></div></div>
+          <p>These regression tests replace model calls and block socket connections. A successful run ends with a pytest summary of passed tests. This validates code behavior, not paper performance.</p>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="test-code">Copy</button></div><pre><code id="test-code">python -m pytest -q -p no:cacheprovider</code></pre></div>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">03</span><div><span class="tag">OPTIONAL · BENCHMARK SETUP</span><h3>Prepare the pinned tau2 integration</h3></div></div>
+          <p>Continue only if you want to preview or run benchmark experiments. Use a new sibling checkout; apply the patch once. Install PortAudio headers before the Python extras, even for text-only tasks.</p>
+          <div class="code-block"><div class="code-toolbar"><span>Ubuntu / Debian only</span><button type="button" data-copy="native-linux-code">Copy</button></div><pre><code id="native-linux-code">sudo apt-get update
+sudo apt-get install portaudio19-dev</code></pre></div>
+          <div class="code-block"><div class="code-toolbar"><span>macOS only · instead of the commands above</span><button type="button" data-copy="native-mac-code">Copy</button></div><pre><code id="native-mac-code">brew install portaudio</code></pre></div>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="tau2-code">Copy</button></div><pre><code id="tau2-code">export TAU2_ROOT="$(cd .. &amp;&amp; pwd)/tau2-bench"
+git clone https://github.com/sierra-research/tau2-bench.git "$TAU2_ROOT"
+git -C "$TAU2_ROOT" checkout 01e812d1d1c4df6d8d2299bf175e482527112244
+git -C "$TAU2_ROOT" apply --check "$PWD/integrations/tau2/fedskill_tau2_integration.patch"
+git -C "$TAU2_ROOT" apply "$PWD/integrations/tau2/fedskill_tau2_integration.patch"
+python -m pip install -e "${TAU2_ROOT}[voice,knowledge]"
+python scripts/check_tau2_integration.py --tau2-root "$TAU2_ROOT"</code></pre></div>
+          <p class="fine-print">Expected: the integration checker verifies the pinned revision, patched agent, retrieval behavior, logs, and all four task sets with model calls and sockets blocked. It downloads no embedding weights.</p>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">04</span><div><span class="tag">DRY RUN · NO EXPERIMENT COST</span><h3>Preview the five conditions</h3></div></div>
+          <p>From the SkillLadder root, run the command below. The model names are placeholders for this preview, not executable provider IDs. --dry-run checks local paths and effective settings, prints commands, and creates no run artifacts or model requests.</p>
+          <div class="code-block"><div class="code-toolbar"><span>bash</span><button type="button" data-copy="preview-code">Copy</button></div><pre><code id="preview-code">python scripts/run_tau2_comparison.py \
+  --tau2-root "$TAU2_ROOT" \
+  --config configs/paper.yaml --domain airline \
+  --agent-model YOUR_LITELLM_SONNET_MODEL \
+  --user-model YOUR_LITELLM_SONNET_MODEL \
+  --skill-model YOUR_OPENAI_COMPATIBLE_SONNET_MODEL \
+  --conditions baseline,l0-static,l1plus-static,full-static,full-dynamic \
+  --output-dir output/airline --dry-run</code></pre></div>
+        </li>
+        <li class="step">
+          <div class="step-heading"><span class="step-index">05</span><div><span class="tag paid">OPT-IN · PAID API CALLS</span><h3>Configure a real experiment</h3></div></div>
+          <p>Before removing --dry-run: load the values from .env.example into your shell (drivers do not load .env automatically). Set SKILLLADDER_API_KEY, SKILLLADDER_BASE_URL, and SKILLLADDER_MODEL for extraction / synthesis; configure tau2's OPENAI_* settings and actual LiteLLM agent / user IDs for your provider. Never commit credentials.</p>
+          <p>Replace the placeholder model IDs above. Paper YAML requires strict embeddings: resolve the MiniLM model's weights commit and add --embedding-revision YOUR_WEIGHTS_COMMIT. Removing --dry-run sends requests and may download weights. Review provider costs and artifact-sharing policies first.</p>
+          <div class="actions">
+            <a class="button outline" href="https://github.com/Arcs-ur/SkillLadder/blob/main/.env.example">Environment template ↗</a>
+            <a class="button outline" href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/COSTS.md">Cost planning ↗</a>
+            <a class="text-link" href="https://github.com/Arcs-ur/SkillLadder/blob/main/docs/REPRODUCIBILITY.md">Full run instructions ↗</a>
+          </div>
+          <p>The driver prints the run directory under output/airline/runs/&lt;fingerprint&gt;/. Inspect comparison_manifest.json, summary.json / summary.md, and skills_from_train/. Keep generated traces and private lineage local; only gated, sanitized L1+ payloads are intended for peer release.</p>
+        </li>
+      </ol>
+      <details class="troubleshooting">
+        <summary>Troubleshooting & next experiments</summary>
+        <p>Missing Python / package imports? Confirm Python 3.12, reactivate .venv, and install from the SkillLadder root. A PyAudio build failure usually means PortAudio headers are missing.</p>
+        <p>Patch already applied or wrong revision? Use a fresh tau2 checkout at the exact pinned commit. Do not apply the patch twice. Run the integration checker before previewing comparisons.</p>
+        <p>Authentication or strict embedding errors? Verify provider-specific IDs, exported environment variables, and the weights commit. Do not disable strict embeddings to claim a paper-equivalent result.</p>
+        <p>For banking_knowledge, retail, or telecom, change --domain; YAML selects the ordered task IDs. For Qwen transfer, AWM, resume, and audits, follow the full reproduction guide. These additional experiments are not part of the free offline tutorial.</p>
+      </details>
+    </section>
+    <section id="citation" class="section">
+      <p class="eyebrow">BUILD ON THIS WORK</p>
+      <h2>Cite SkillLadder.</h2>
+      <p>If you use the method or code in your research, please cite the paper.</p>
+      <div class="code-block"><div class="code-toolbar"><span>BibTeX</span><button type="button" data-copy="citation-code">Copy</button></div><pre><code id="citation-code">@inproceedings{chen-etal-2026-skillladder,
+  title = "{SkillLadder}: Multi-User Skill Evolution with Compliance-Oriented Synchronization and Quality-Gated Synthesis",
+  author = "Chen, Nan and Wang, Yi and Zhu, Bin Benjamin and Xiong, Haoyi",
+  booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2026",
+  month = oct,
+  year = "2026",
+  address = "Budapest, Hungary",
+  publisher = "Association for Computational Linguistics",
+  url = "https://aclanthology.org/2026.findings-emnlp.218/",
+  doi = "10.18653/2026.findings-emnlp.218",
+  pages = "4553--4573"
+}</code></pre></div>
+      <a href="https://github.com/Arcs-ur/SkillLadder/blob/main/CITATION.cff">Machine-readable citation (CITATION.cff) ↗</a>
     </section>
   </main>
+  <footer>
+    <a class="brand" href="#home">SkillLadder</a>
+    <p>Open research · Apache 2.0 code · MIT-licensed tau2 integration</p>
+    <div><a href="llms.txt">Agent-readable guide</a><a href="https://github.com/Arcs-ur/SkillLadder/blob/main/THIRD_PARTY_NOTICES.md">Third-party notices</a></div>
+  </footer>
+  <p id="copy-status" class="copy-status" role="status" aria-live="polite"></p>
 </body>
 </html>

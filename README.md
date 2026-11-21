@@ -13,6 +13,8 @@
   &nbsp;·&nbsp;
   <a href="https://aclanthology.org/2026.findings-emnlp.218.pdf">📑 PDF</a>
   &nbsp;·&nbsp;
+  <a href="https://arcs-ur.github.io/SkillLadder/">🌐 Project site / 项目网站</a>
+  &nbsp;·&nbsp;
   <a href="docs/REPRODUCIBILITY.md">🚀 Reproduction</a>
   &nbsp;·&nbsp;
   <a href="docs/PAPER_TO_CODE.md">🧭 Paper-to-code</a>
@@ -39,9 +41,13 @@ privacy guarantee.
 **论文与开源代码：** SkillLadder 研究大语言模型智能体的技能学习、多用户技能演化、
 程序性记忆、质量门控合成与脱敏技能共享，并在 tau2-bench 上评估静态和动态技能检索。
 
-The [project overview source](docs/index.html) connects the paper to its public
-artifacts; see the [publishing guide](docs/DISCOVERY.md#publish-and-monitor-the-project-page)
-for hosting it. For research assistants, start with the
+The [bilingual project site source](docs/index.html) connects the paper to its public
+artifacts and provides a step-by-step tutorial, from offline checks to benchmark
+command previews. English lives at the project root; the independent Chinese
+page lives at [`/zh/`](docs/zh/index.html). Switch English / 中文 using the header
+links, which work without JavaScript. The header link targets the intended
+Pages URL; see the [publishing guide](docs/DISCOVERY.md#publish-and-monitor-the-project-page)
+for deployment prerequisites. For research assistants, start with the
 [machine-readable guide](docs/llms.txt) or the optional
 [SkillLadder research search skill](.agents/skills/skillladder-research/SKILL.md).
 The skill's description is a relevance hook in hosts that support Agent Skills;
